@@ -1,0 +1,392 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using Concentus.Enums;
+using Concentus.Structs;
+using NAudio.Wave;
+using RNNoise.NET;
+
+namespace VoxCore.Client;
+
+public sealed class VoiceClient : IDisposable
+{
+    private const int SampleRate = 48000;
+    private const int Channels = 1;
+    private const int FrameSize = 960; // 20 мс
+    private const int FrameBytes = FrameSize * 2; // 16 бит PCM
+    private const int VkSpace = 0x20;
+
+    private readonly CancellationTokenSource _cts = new();
+    private readonly ConcurrentQueue<byte[]> _pcmQueue = new();
+    private byte[] _accum = [];
+    private UdpClient? _udp;
+    private WaveInEvent? _capture;
+    private WaveOutEvent? _playback;
+    private BufferedWaveProvider? _playbackBuffer;
+    private OpusEncoder? _encoder;
+    private OpusDecoder? _decoder;
+    private Denoiser? _denoiser;
+    private readonly float[] _denoiseBuf = new float[FrameSize];
+    private Thread? _encodeThread;
+    private Thread? _receiveThread;
+    private Thread? _heartbeatThread;
+    private Thread? _speakerThread;
+    private volatile bool _running;
+    private string _room = "";
+    private string _name = "";
+    private readonly Dictionary<string, DateTime> _speakerLast = [];
+    private readonly object _speakerLock = new();
+    private AesGcm? _gcm;
+    private long _nonceCounter;
+    private readonly byte[] _sessionId = RandomNumberGenerator.GetBytes(4);
+
+    public event Action<IReadOnlyList<string>>? MembersChanged;
+    public event Action<bool>? TalkingChanged;
+    public event Action<string>? StatusChanged;
+    public event Action<string>? SpeakerStarted;
+    public event Action<string>? SpeakerStopped;
+
+    public bool OpenMic { get; set; }
+    public int InputDevice { get; set; }
+    public double MicGain { get; set; } = 1.0;
+    private volatile bool _noiseSuppression = true;
+
+    public bool NoiseSuppression
+    {
+        get => _noiseSuppression;
+        set => _noiseSuppression = value;
+    }
+
+    public bool IsConnected => _running;
+
+    public void Connect(string server, int port, string room, string name, string password)
+    {
+        _room = room;
+        _name = name;
+        _gcm?.Dispose();
+        _gcm = string.IsNullOrEmpty(password)
+            ? null
+            : new AesGcm(SHA256.HashData(Encoding.UTF8.GetBytes(password)), 16);
+        _nonceCounter = 0;
+        _udp = new UdpClient(server, port);
+        _udp.Client.SendTimeout = 1000;
+
+        _encoder = OpusEncoder.Create(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
+        _encoder.Bitrate = 96000;
+        _encoder.Complexity = 10;
+        _encoder.UseDTX = true;
+        _encoder.UseInbandFEC = true;
+        _encoder.PacketLossPercent = 10;
+
+        _decoder = OpusDecoder.Create(SampleRate, Channels);
+        if (_noiseSuppression) _denoiser = new Denoiser();
+
+        var waveFormat = new WaveFormat(SampleRate, 16, Channels);
+        _playbackBuffer = new BufferedWaveProvider(waveFormat)
+        {
+            BufferDuration = TimeSpan.FromMilliseconds(200),
+            DiscardOnBufferOverflow = true
+        };
+        _playback = new WaveOutEvent();
+        _playback.Init(_playbackBuffer);
+        _playback.Play();
+
+        _capture = new WaveInEvent
+        {
+            DeviceNumber = InputDevice,
+            WaveFormat = waveFormat,
+            BufferMilliseconds = 20
+        };
+        _capture.DataAvailable += OnCaptureData;
+        _capture.StartRecording();
+
+        _running = true;
+        _encodeThread = new Thread(EncodeLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
+        _receiveThread = new Thread(ReceiveLoop) { IsBackground = true };
+        _heartbeatThread = new Thread(HeartbeatLoop) { IsBackground = true };
+        _speakerThread = new Thread(SpeakerLoop) { IsBackground = true };
+        _encodeThread.Start();
+        _receiveThread.Start();
+        _heartbeatThread.Start();
+        _speakerThread.Start();
+
+        SendJoin();
+        MembersChanged?.Invoke([_name]);
+        StatusChanged?.Invoke($"подключено к {server}:{port}");
+    }
+
+    public void Disconnect()
+    {
+        if (!_running) return;
+        SendLeave();
+        _running = false;
+        _cts.Cancel();
+        _capture?.StopRecording();
+        _capture?.Dispose();
+        _playback?.Stop();
+        _playback?.Dispose();
+        _udp?.Close();
+        _denoiser?.Dispose();
+        _denoiser = null;
+        StatusChanged?.Invoke("отключено");
+    }
+
+    private void OnCaptureData(object? sender, WaveInEventArgs e)
+    {
+        var data = new byte[e.BytesRecorded];
+        Array.Copy(e.Buffer, data, e.BytesRecorded);
+        _pcmQueue.Enqueue(data);
+    }
+
+    private void EncodeLoop()
+    {
+        var frameBytes = new byte[FrameBytes];
+        var frameShorts = new short[FrameSize];
+        var opusBuf = new byte[4000];
+        var lastTalk = false;
+        var lastTalkPing = DateTime.MinValue;
+
+        while (!_cts.IsCancellationRequested)
+        {
+            var talk = OpenMic || (GetAsyncKeyState(VkSpace) & 0x8000) != 0;
+            if (talk != lastTalk)
+            {
+                lastTalk = talk;
+                TalkingChanged?.Invoke(talk);
+            }
+            if (talk && (DateTime.UtcNow - lastTalkPing).TotalMilliseconds > 200)
+            {
+                lastTalkPing = DateTime.UtcNow;
+            }
+
+            while (_pcmQueue.TryDequeue(out var chunk))
+            {
+                _accum = [.. _accum, .. chunk];
+                var off = 0;
+                while (_accum.Length - off >= FrameBytes)
+                {
+                    Array.Copy(_accum, off, frameBytes, 0, FrameBytes);
+                    Buffer.BlockCopy(frameBytes, 0, frameShorts, 0, FrameBytes);
+                    off += FrameBytes;
+                    if (talk && _encoder is not null)
+                    {
+                        if (_denoiser is not null)
+                            DenoiseFrame(frameShorts);
+                        if (MicGain != 1.0)
+                        {
+                            var g = (float)MicGain;
+                            for (int i = 0; i < frameShorts.Length; i++)
+                                frameShorts[i] = (short)Math.Clamp(frameShorts[i] * g, short.MinValue, short.MaxValue);
+                        }
+                        int n = _encoder.Encode(frameShorts, 0, FrameSize, opusBuf, 0, opusBuf.Length);
+                        SendAudio(opusBuf, n);
+                    }
+                }
+                if (off > 0)
+                {
+                    var rest = new byte[_accum.Length - off];
+                    Array.Copy(_accum, off, rest, 0, rest.Length);
+                    _accum = rest;
+                }
+            }
+            Thread.Sleep(1);
+        }
+    }
+
+    private void DenoiseFrame(short[] shorts)
+    {
+        for (int i = 0; i < FrameSize; i++)
+            _denoiseBuf[i] = shorts[i] / 32768f;
+        _denoiser!.Denoise(_denoiseBuf.AsSpan(0, 480), false);
+        _denoiser.Denoise(_denoiseBuf.AsSpan(480, 480), false);
+        for (int i = 0; i < FrameSize; i++)
+            shorts[i] = (short)Math.Clamp((int)(_denoiseBuf[i] * 32768f), short.MinValue, short.MaxValue);
+    }
+
+    private void SendAudio(byte[] opus, int len)
+    {
+        if (_udp is null || _room.Length > 255) return;
+        var nameBytes = Encoding.UTF8.GetBytes(_name);
+        if (nameBytes.Length > 255) return;
+        byte[] payload;
+        if (_gcm is not null)
+        {
+            var nonce = new byte[12];
+            _sessionId.CopyTo(nonce, 0);
+            var counter = Interlocked.Increment(ref _nonceCounter);
+            for (int i = 0; i < 8; i++)
+                nonce[4 + i] = (byte)(counter >> (56 - i * 8));
+            var ct = new byte[len + 16];
+            _gcm.Encrypt(nonce, opus.AsSpan(0, len), ct.AsSpan(0, len), ct.AsSpan(len), null);
+            payload = new byte[12 + ct.Length];
+            nonce.CopyTo(payload, 0);
+            ct.CopyTo(payload, 12);
+        }
+        else
+        {
+            payload = new byte[len];
+            Array.Copy(opus, 0, payload, 0, len);
+        }
+        var packet = new byte[2 + _room.Length + 1 + nameBytes.Length + payload.Length];
+        packet[0] = 0x03;
+        packet[1] = (byte)_room.Length;
+        Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
+        packet[2 + _room.Length] = (byte)nameBytes.Length;
+        nameBytes.CopyTo(packet, 3 + _room.Length);
+        Array.Copy(payload, 0, packet, 3 + _room.Length + nameBytes.Length, payload.Length);
+        try { _udp.Send(packet, packet.Length); } catch { }
+    }
+
+    private void ReceiveLoop()
+    {
+        var pcmBuf = new short[FrameSize];
+        var outBytes = new byte[FrameBytes];
+        var recvBuf = new byte[8192];
+        while (!_cts.IsCancellationRequested)
+        {
+            try
+            {
+                if (_udp is null) break;
+                int received = _udp.Client.Receive(recvBuf);
+                if (received < 2) continue;
+                var data = recvBuf.AsSpan(0, received).ToArray();
+
+                switch (data[0])
+                {
+                    case 0x03: // аудио [0x03][roomLen][room][nameLen][name][opus...]
+                        if (_decoder is null || _playbackBuffer is null) continue;
+                        int roomLen = data[1];
+                        int nameLen = data[2 + roomLen];
+                        if (data.Length < 3 + roomLen + nameLen) continue;
+                        var speaker = Encoding.UTF8.GetString(data, 3 + roomLen, nameLen);
+                        var raw = data.AsSpan(3 + roomLen + nameLen).ToArray();
+                        if (raw.Length == 0) continue;
+                        byte[] payload;
+                        if (_gcm is not null)
+                        {
+                            if (raw.Length < 12 + 16) continue;
+                            var nonce = raw.AsSpan(0, 12);
+                            var ct = raw.AsSpan(12);
+                            var pt = new byte[ct.Length - 16];
+                            try { _gcm.Decrypt(nonce, ct[..^16], ct[^16..], pt, null); }
+                            catch { continue; } // чужой пароль — игнор
+                            payload = pt;
+                        }
+                        else
+                        {
+                            payload = raw;
+                        }
+                        if (payload.Length == 0) continue;
+                        SpeakerStarted?.Invoke(speaker);
+                        lock (_speakerLock) _speakerLast[speaker] = DateTime.UtcNow;
+                        int n = _decoder.Decode(payload, 0, payload.Length, pcmBuf, 0, FrameSize, false);
+                        for (int i = 0; i < n; i++)
+                        {
+                            outBytes[i * 2] = (byte)(pcmBuf[i] & 0xFF);
+                            outBytes[i * 2 + 1] = (byte)((pcmBuf[i] >> 8) & 0xFF);
+                        }
+                        _playbackBuffer.AddSamples(outBytes, 0, n * 2);
+                        break;
+
+                    case 0x06: // список участников
+                        var names = ParseMembers(data);
+                        MembersChanged?.Invoke(names);
+                        break;
+                }
+            }
+            catch
+            {
+                if (_cts.IsCancellationRequested) break;
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> ParseMembers(byte[] data)
+    {
+        int roomLen = data[1];
+        int count = data[2 + roomLen];
+        var names = new List<string>(count);
+        var off = 3 + roomLen;
+        for (int i = 0; i < count && off < data.Length; i++)
+        {
+            int nl = data[off++];
+            if (off + nl > data.Length) break;
+            names.Add(Encoding.UTF8.GetString(data, off, nl));
+            off += nl;
+        }
+        return names;
+    }
+
+    private void SpeakerLoop()
+    {
+        while (!_cts.IsCancellationRequested)
+        {
+            var now = DateTime.UtcNow;
+            List<string>? stopped = null;
+            lock (_speakerLock)
+            {
+                foreach (var (name, last) in _speakerLast)
+                    if ((now - last).TotalMilliseconds > 300)
+                        (stopped ??= []).Add(name);
+                if (stopped is not null)
+                    foreach (var name in stopped)
+                        _speakerLast.Remove(name);
+            }
+            if (stopped is not null)
+                foreach (var name in stopped)
+                    SpeakerStopped?.Invoke(name);
+            Thread.Sleep(100);
+        }
+    }
+
+    private void HeartbeatLoop()
+    {
+        while (!_cts.IsCancellationRequested)
+        {
+            if (_udp is not null && _room.Length <= 255)
+            {
+                var packet = new byte[2 + _room.Length];
+                packet[0] = 0x04;
+                packet[1] = (byte)_room.Length;
+                Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
+                try { _udp.Send(packet, packet.Length); } catch { }
+            }
+            Thread.Sleep(5000);
+        }
+    }
+
+    private void SendJoin()
+    {
+        if (_udp is null || _room.Length > 255 || _name.Length > 255) return;
+        var nameBytes = Encoding.UTF8.GetBytes(_name);
+        var packet = new byte[3 + _room.Length + nameBytes.Length];
+        packet[0] = 0x01;
+        packet[1] = (byte)_room.Length;
+        Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
+        packet[2 + _room.Length] = (byte)nameBytes.Length;
+        nameBytes.CopyTo(packet, 3 + _room.Length);
+        try { _udp.Send(packet, packet.Length); } catch { }
+    }
+
+    private void SendLeave()
+    {
+        if (_udp is null || _room.Length > 255) return;
+        var packet = new byte[2 + _room.Length];
+        packet[0] = 0x02;
+        packet[1] = (byte)_room.Length;
+        Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
+        try { _udp.Send(packet, packet.Length); } catch { }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    public void Dispose()
+    {
+        Disconnect();
+        _cts.Dispose();
+    }
+}

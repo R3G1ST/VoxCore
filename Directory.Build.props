@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <WindowsSdkPath>C:\Program Files (x86)\Windows Kits\10\</WindowsSdkPath>
+    <GenXbfPath>C:\Users\R3G1S\.nuget\packages\microsoft.windowsappsdk.winui\2.3.6\tools\</GenXbfPath>
+  </PropertyGroup>
+</Project>
