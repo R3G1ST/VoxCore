@@ -19,7 +19,7 @@ public sealed class VoiceClient : IDisposable
     private const int FrameBytes = FrameSize * 2; // 16 бит PCM
     private const int VkSpace = 0x20;
 
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource _cts = new();
     private readonly ConcurrentQueue<byte[]> _pcmQueue = new();
     private byte[] _accum = [];
     private UdpClient? _udp;
@@ -106,10 +106,15 @@ public sealed class VoiceClient : IDisposable
         _capture.StartRecording();
 
         _running = true;
-        _encodeThread = new Thread(EncodeLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
-        _receiveThread = new Thread(ReceiveLoop) { IsBackground = true };
-        _heartbeatThread = new Thread(HeartbeatLoop) { IsBackground = true };
-        _speakerThread = new Thread(SpeakerLoop) { IsBackground = true };
+        var oldCts = _cts;
+        _cts = new CancellationTokenSource();
+        oldCts.Cancel();
+        oldCts.Dispose();
+        var token = _cts.Token;
+        _encodeThread = new Thread(() => EncodeLoop(token)) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
+        _receiveThread = new Thread(() => ReceiveLoop(token)) { IsBackground = true };
+        _heartbeatThread = new Thread(() => HeartbeatLoop(token)) { IsBackground = true };
+        _speakerThread = new Thread(() => SpeakerLoop(token)) { IsBackground = true };
         _encodeThread.Start();
         _receiveThread.Start();
         _heartbeatThread.Start();
@@ -143,7 +148,7 @@ public sealed class VoiceClient : IDisposable
         _pcmQueue.Enqueue(data);
     }
 
-    private void EncodeLoop()
+    private void EncodeLoop(CancellationToken token)
     {
         var frameBytes = new byte[FrameBytes];
         var frameShorts = new short[FrameSize];
@@ -151,7 +156,7 @@ public sealed class VoiceClient : IDisposable
         var lastTalk = false;
         var lastTalkPing = DateTime.MinValue;
 
-        while (!_cts.IsCancellationRequested)
+        while (!token.IsCancellationRequested)
         {
             var talk = !MicMuted && (OpenMic || (GetAsyncKeyState(VkSpace) & 0x8000) != 0);
             if (talk != lastTalk)
@@ -242,12 +247,12 @@ public sealed class VoiceClient : IDisposable
         try { _udp.Send(packet, packet.Length); } catch { }
     }
 
-    private void ReceiveLoop()
+    private void ReceiveLoop(CancellationToken token)
     {
         var pcmBuf = new short[FrameSize];
         var outBytes = new byte[FrameBytes];
         var recvBuf = new byte[8192];
-        while (!_cts.IsCancellationRequested)
+        while (!token.IsCancellationRequested)
         {
             try
             {
@@ -302,7 +307,7 @@ public sealed class VoiceClient : IDisposable
             }
             catch
             {
-                if (_cts.IsCancellationRequested) break;
+                if (token.IsCancellationRequested) break;
             }
         }
     }
@@ -323,9 +328,9 @@ public sealed class VoiceClient : IDisposable
         return names;
     }
 
-    private void SpeakerLoop()
+    private void SpeakerLoop(CancellationToken token)
     {
-        while (!_cts.IsCancellationRequested)
+        while (!token.IsCancellationRequested)
         {
             var now = DateTime.UtcNow;
             List<string>? stopped = null;
@@ -345,9 +350,9 @@ public sealed class VoiceClient : IDisposable
         }
     }
 
-    private void HeartbeatLoop()
+    private void HeartbeatLoop(CancellationToken token)
     {
-        while (!_cts.IsCancellationRequested)
+        while (!token.IsCancellationRequested)
         {
             if (_udp is not null && _room.Length <= 255)
             {
