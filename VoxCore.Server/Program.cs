@@ -90,6 +90,10 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "create_channel" => user is null ? Error("unauthorized") : CreateChannel(req, store, user.Id),
         "delete_channel" => user is null ? Error("unauthorized") : DeleteChannel(req, store, user.Id),
         "join_channel" => user is null ? Error("unauthorized") : JoinChannel(req, store),
+        "friends" => user is null ? Error("unauthorized") : Friends(store, user.Id),
+        "add_friend" => user is null ? Error("unauthorized") : AddFriend(req, store, user.Id),
+        "remove_friend" => user is null ? Error("unauthorized") : RemoveFriend(req, store, user.Id),
+        "search_users" => user is null ? Error("unauthorized") : SearchUsers(req, store, user.Id),
         _ => Error("unknown op")
     };
 }
@@ -167,6 +171,49 @@ static string JoinChannel(JsonElement req, Store store)
             return Error("неверный пароль канала");
     }
     return Ok(new { channel = new { channel.Id, channel.Name } });
+}
+
+static string Friends(Store store, int userId)
+{
+    var user = store.FindUserById(userId);
+    if (user is null) return Error("пользователь не найден");
+    var onlineIds = store.Tokens.Values.ToHashSet();
+    var items = user.Friends
+        .Select(store.FindUserById)
+        .Where(f => f is not null)
+        .Select(f => new { f!.Id, f.Name, f.Color, Online = onlineIds.Contains(f.Id) })
+        .OrderByDescending(f => f.Online)
+        .ThenBy(f => f.Name)
+        .ToList();
+    return Ok(new { friends = items });
+}
+
+static string AddFriend(JsonElement req, Store store, int userId)
+{
+    var name = (GetString(req, "name") ?? "").Trim();
+    if (name.Length == 0) return Error("укажи ник");
+    var friend = store.FindUserByName(name);
+    if (friend is null) return Error("пользователь не найден");
+    if (!store.AddFriend(userId, friend.Id)) return Error("нельзя добавить себя");
+    return Ok(new { friend = new { friend.Id, friend.Name, friend.Color, Online = store.Tokens.ContainsValue(friend.Id) } });
+}
+
+static string RemoveFriend(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("id", out var idEl) || !idEl.TryGetInt32(out var id)) return Error("bad id");
+    return store.RemoveFriend(userId, id)
+        ? Ok(new { })
+        : Error("друг не найден");
+}
+
+static string SearchUsers(JsonElement req, Store store, int userId)
+{
+    var query = (GetString(req, "query") ?? "").Trim();
+    if (query.Length < 1) return Error("минимум 1 символ");
+    var items = store.SearchUsers(query, userId)
+        .Select(u => new { u.Id, u.Name, u.Color, Online = store.Tokens.ContainsValue(u.Id) })
+        .ToList();
+    return Ok(new { users = items });
 }
 
 static string GetString(JsonElement el, string prop) =>

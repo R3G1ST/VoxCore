@@ -30,6 +30,7 @@ public sealed class UserInfo
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public string Color { get; set; } = "#5865f2";
+    public bool Online { get; set; }
 }
 
 public sealed class ApiClient
@@ -110,6 +111,33 @@ public sealed class ApiClient
         if (!r.Ok) throw new ApiException(r.Err ?? "не удалось войти в канал");
     }
 
+    public async Task<List<UserInfo>> GetFriendsAsync()
+    {
+        var r = await CallAsync(new { op = "friends", token = Token });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось получить друзей");
+        return ParseUsers(r.Data.GetProperty("friends"));
+    }
+
+    public async Task<List<UserInfo>> SearchUsersAsync(string query)
+    {
+        var r = await CallAsync(new { op = "search_users", token = Token, query });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось выполнить поиск");
+        return ParseUsers(r.Data.GetProperty("users"));
+    }
+
+    public async Task<UserInfo> AddFriendAsync(string name)
+    {
+        var r = await CallAsync(new { op = "add_friend", token = Token, name });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось добавить друга");
+        return ParseUser(r.Data.GetProperty("friend"));
+    }
+
+    public async Task RemoveFriendAsync(int id)
+    {
+        var r = await CallAsync(new { op = "remove_friend", token = Token, id });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось удалить друга");
+    }
+
     private async Task<ApiResult> CallAsync(object payload)
     {
         using var client = new TcpClient();
@@ -136,6 +164,10 @@ public sealed class ApiClient
     {
         Id = el.GetProperty("Id").GetInt32(),
         Name = el.GetProperty("Name").GetString() ?? "",
-        Color = el.GetProperty("Color").GetString() ?? "#5865f2"
+        Color = el.GetProperty("Color").GetString() ?? "#5865f2",
+        Online = el.TryGetProperty("Online", out var on) && on.GetBoolean()
     };
+
+    private static List<UserInfo> ParseUsers(JsonElement arr) =>
+        arr.EnumerateArray().Select(ParseUser).ToList();
 }

@@ -12,6 +12,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <Product>VoxCore</Product>
+    <AssemblyTitle>VoxCore</AssemblyTitle>
+    <Description>Голосовой чат для игр — качество TeamSpeak, удобство Discord</Description>
   </PropertyGroup>
 <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />

@@ -10,6 +10,7 @@ public sealed class User
     public string Name { get; set; } = "";
     public string PassHash { get; set; } = "";
     public string Color { get; set; } = "#5865f2";
+    public List<int> Friends { get; set; } = [];
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -68,6 +69,43 @@ public sealed class Store
 
     public User? FindUserByName(string name) => Users.FirstOrDefault(u => u.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
     public User? FindUserById(int id) => Users.FirstOrDefault(u => u.Id == id);
+
+    public List<User> SearchUsers(string query, int excludeId, int limit = 20)
+    {
+        lock (_lock)
+        {
+            return Users
+                .Where(u => u.Id != excludeId && u.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(u => u.Name)
+                .Take(limit)
+                .ToList();
+        }
+    }
+
+    public bool AddFriend(int userId, int friendId)
+    {
+        lock (_lock)
+        {
+            var user = FindUserById(userId);
+            var friend = FindUserById(friendId);
+            if (user is null || friend is null || user.Id == friend.Id) return false;
+            if (user.Friends.Contains(friendId)) return true;
+            user.Friends.Add(friendId);
+            SaveUsers();
+            return true;
+        }
+    }
+
+    public bool RemoveFriend(int userId, int friendId)
+    {
+        lock (_lock)
+        {
+            var user = FindUserById(userId);
+            if (user is null || !user.Friends.Remove(friendId)) return false;
+            SaveUsers();
+            return true;
+        }
+    }
 
     public int NextUserId => Users.Count > 0 ? Users.Max(u => u.Id) + 1 : 1;
     public int NextChannelId => Channels.Count > 0 ? Channels.Max(c => c.Id) + 1 : 1;

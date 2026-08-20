@@ -26,6 +26,21 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1100, 700));
         AppWindow.Title = "VoxCore";
 
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarArea);
+        var tb = AppWindow.TitleBar;
+        tb.BackgroundColor = ColorFromArgb(30, 31, 34);
+        tb.ForegroundColor = ColorFromArgb(148, 155, 164);
+        tb.ButtonBackgroundColor = ColorFromArgb(30, 31, 34);
+        tb.ButtonForegroundColor = ColorFromArgb(148, 155, 164);
+        tb.ButtonHoverBackgroundColor = ColorFromArgb(57, 60, 67);
+        tb.ButtonHoverForegroundColor = ColorFromArgb(255, 255, 255);
+        tb.ButtonPressedBackgroundColor = ColorFromArgb(35, 37, 43);
+        tb.InactiveBackgroundColor = ColorFromArgb(30, 31, 34);
+        tb.InactiveForegroundColor = ColorFromArgb(90, 94, 102);
+        tb.ButtonInactiveBackgroundColor = ColorFromArgb(30, 31, 34);
+        tb.ButtonInactiveForegroundColor = ColorFromArgb(90, 94, 102);
+
         AvatarBorder.Background = BrushFromHex(user.Color);
         AvatarLetter.Text = user.Name.Length > 0 ? user.Name[..1].ToUpperInvariant() : "?";
         UserNameText.Text = user.Name;
@@ -38,10 +53,15 @@ public sealed partial class MainWindow : Window
         _voice.SpeakerStopped += OnSpeakerStopped;
 
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
-        _refreshTimer.Tick += async (_, _) => await RefreshChannelsAsync();
+        _refreshTimer.Tick += async (_, _) =>
+        {
+            await RefreshChannelsAsync();
+            await RefreshFriendsAsync();
+        };
         _refreshTimer.Start();
 
         Closed += OnWindowClosed;
+        _voice.OpenMic = true;
         _ = RefreshChannelsAsync();
     }
 
@@ -259,6 +279,120 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    // ---------- Друзья ----------
+
+    private async Task RefreshFriendsAsync()
+    {
+        try
+        {
+            var friends = await _api.GetFriendsAsync();
+            FriendsList.ItemsSource = friends.Select(FriendItem.FromUser).ToList();
+        }
+        catch
+        {
+            // сервер недоступен — не обновляем
+        }
+    }
+
+    private async Task DoSearchAsync()
+    {
+        var query = SearchBox.Text.Trim();
+        if (query.Length == 0)
+        {
+            SearchResultsList.Visibility = Visibility.Collapsed;
+            SearchInfo.Text = "";
+            return;
+        }
+        SearchBtn.IsEnabled = false;
+        SearchInfo.Text = "поиск...";
+        try
+        {
+            var users = await _api.SearchUsersAsync(query);
+            if (users.Count == 0)
+            {
+                SearchInfo.Text = "никого не найдено";
+                SearchResultsList.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                SearchInfo.Text = "";
+                SearchResultsList.ItemsSource = users.Select(FriendItem.FromUser).ToList();
+                SearchResultsList.Visibility = Visibility.Visible;
+            }
+        }
+        catch (ApiException ex)
+        {
+            SearchInfo.Text = ex.Message;
+        }
+        catch
+        {
+            SearchInfo.Text = "нет связи с сервером";
+        }
+        finally
+        {
+            SearchBtn.IsEnabled = true;
+        }
+    }
+
+    private async void SearchBtn_Click(object sender, RoutedEventArgs e) => await DoSearchAsync();
+
+    private void SearchBox_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+            _ = DoSearchAsync();
+    }
+
+    private async void SearchResult_Click(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not FriendItem item) return;
+        SearchInfo.Text = "добавляю...";
+        try
+        {
+            await _api.AddFriendAsync(item.Name);
+            SearchInfo.Text = $"{item.Name} добавлен в друзья";
+            SearchBox.Text = "";
+            SearchResultsList.Visibility = Visibility.Collapsed;
+            await RefreshFriendsAsync();
+        }
+        catch (ApiException ex)
+        {
+            SearchInfo.Text = ex.Message;
+        }
+        catch
+        {
+            SearchInfo.Text = "нет связи с сервером";
+        }
+    }
+
+    private async void FriendRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+        try
+        {
+            await _api.RemoveFriendAsync(id);
+            await RefreshFriendsAsync();
+        }
+        catch
+        {
+            // игнорируем
+        }
+    }
+
+    private void ChannelsTabBtn_Click(object sender, RoutedEventArgs e)
+    {
+        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#5865f2");
+        FriendsTabBtn.Background = MainWindow.BrushFromHex("#3f4248");
+        FriendsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void FriendsTabBtn_Click(object sender, RoutedEventArgs e)
+    {
+        FriendsTabBtn.Background = MainWindow.BrushFromHex("#5865f2");
+        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#3f4248");
+        FriendsPanel.Visibility = Visibility.Visible;
+        _ = RefreshFriendsAsync();
+    }
+
     // ---------- Голос ----------
 
     private void OnMembersChanged(IReadOnlyList<string> names)
@@ -293,8 +427,21 @@ public sealed partial class MainWindow : Window
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            PttButton.Background = BrushFromHex(talking ? "#3ba55d" : "#5865f2");
-            PttButtonText.Text = talking ? "ГОВОРИШЬ..." : "[SPACE] PTT";
+            if (talking)
+            {
+                StatusText.Text = "говоришь...";
+                StatusText.Foreground = BrushFromHex("#3ba55d");
+            }
+            else if (ModeToggle.IsChecked == true)
+            {
+                StatusText.Text = "микрофон активен — просто говори";
+                StatusText.Foreground = BrushFromHex("#b5bac1");
+            }
+            else
+            {
+                StatusText.Text = "PTT — зажми пробел";
+                StatusText.Foreground = BrushFromHex("#b5bac1");
+            }
         });
     }
 
@@ -303,16 +450,24 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() => StatusText.Text = status);
     }
 
-    // ---------- PTT ----------
+    // ---------- Режим микрофона ----------
 
-    private void PttButton_PointerPressed(object sender, PointerRoutedEventArgs e)
+    private void ModeToggle_Checked(object sender, RoutedEventArgs e)
     {
+        ModeToggle.Content = "🎤 АКТИВНЫЙ";
         _voice.OpenMic = true;
+        ModeHintText.Text = "микрофон активен — просто говори";
+        if (!_voice.MicMuted)
+            StatusText.Text = "микрофон активен — просто говори";
     }
 
-    private void PttButton_PointerReleased(object sender, PointerRoutedEventArgs e)
+    private void ModeToggle_Unchecked(object sender, RoutedEventArgs e)
     {
+        ModeToggle.Content = "⌨️ PTT";
         _voice.OpenMic = false;
+        ModeHintText.Text = "PTT — зажми пробел";
+        if (!_voice.MicMuted)
+            StatusText.Text = "PTT — зажми пробел";
     }
 
     // ---------- Кнопки ----------
@@ -394,4 +549,7 @@ public sealed partial class MainWindow : Window
             Convert.ToByte(hex.Substring(2, 2), 16),
             Convert.ToByte(hex.Substring(4, 2), 16)));
     }
+
+    private static Windows.UI.Color ColorFromArgb(byte r, byte g, byte b)
+        => Windows.UI.Color.FromArgb(255, r, g, b);
 }
