@@ -49,15 +49,10 @@ public sealed partial class MainWindow : Window
     {
         _refreshTimer.Stop();
         _voice.Dispose();
-        SaveSettings();
-    }
-
-    private void SaveSettings()
-    {
         _settings.Save();
     }
 
-    // ---------- РљР°РЅР°Р»С‹ ----------
+    // ---------- Каналы ----------
 
     private async Task RefreshChannelsAsync()
     {
@@ -69,7 +64,7 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
-            // СЃРµСЂРІРµСЂ РЅРµРґРѕСЃС‚СѓРїРµРЅ вЂ” РїСЂРѕСЃС‚Рѕ РЅРµ РѕР±РЅРѕРІР»СЏРµРј
+            // сервер недоступен — просто не обновляем
         }
     }
 
@@ -90,13 +85,13 @@ public sealed partial class MainWindow : Window
             var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             panel.Children.Add(new TextBlock
             {
-                Text = "рџ”Љ",
+                Text = "🔊",
                 FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center
             });
             var nameTb = new TextBlock
             {
-                Text = ch.Name + (ch.HasPassword ? " рџ”’" : ""),
+                Text = ch.Name + (ch.HasPassword ? " 🔒" : ""),
                 Foreground = BrushFromHex("#dbdee1"),
                 FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code"),
                 FontSize = 14,
@@ -117,7 +112,7 @@ public sealed partial class MainWindow : Window
             {
                 var delBtn = new Button
                 {
-                    Content = "рџ—‘",
+                    Content = "🗑",
                     Padding = new Thickness(4, 2, 4, 2),
                     Background = BrushFromHex("#00000000"),
                     BorderThickness = new Thickness(0),
@@ -135,17 +130,17 @@ public sealed partial class MainWindow : Window
 
     private async Task CreateChannelAsync()
     {
-        var nameBox = new TextBox { PlaceholderText = "РЅР°Р·РІР°РЅРёРµ РєР°РЅР°Р»Р°" };
-        var passBox = new PasswordBox { PlaceholderText = "РїР°СЂРѕР»СЊ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)" };
+        var nameBox = new TextBox { PlaceholderText = "название канала" };
+        var passBox = new PasswordBox { PlaceholderText = "пароль (необязательно)" };
         var panel = new StackPanel { Spacing = 10, MinWidth = 320 };
         panel.Children.Add(nameBox);
         panel.Children.Add(passBox);
         var dialog = new ContentDialog
         {
-            Title = "РЎРѕР·РґР°С‚СЊ РєР°РЅР°Р»",
+            Title = "Создать канал",
             Content = panel,
-            PrimaryButtonText = "РЎРћР—Р”РђРўР¬",
-            CloseButtonText = "РћРўРњР•РќРђ",
+            PrimaryButtonText = "СОЗДАТЬ",
+            CloseButtonText = "ОТМЕНА",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = Content.XamlRoot
         };
@@ -163,7 +158,7 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
-            await ShowErrorAsync("РЅРµС‚ СЃРІСЏР·Рё СЃ СЃРµСЂРІРµСЂРѕРј");
+            await ShowErrorAsync("нет связи с сервером");
         }
     }
 
@@ -171,10 +166,10 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new ContentDialog
         {
-            Title = $"РЈРґР°Р»РёС‚СЊ РєР°РЅР°Р» В«{ch.Name}В»?",
-            Content = "РґРµР№СЃС‚РІРёРµ РЅРµРѕР±СЂР°С‚РёРјРѕ",
-            PrimaryButtonText = "РЈР”РђР›РРўР¬",
-            CloseButtonText = "РћРўРњР•РќРђ",
+            Title = $"Удалить канал «{ch.Name}»?",
+            Content = "действие необратимо",
+            PrimaryButtonText = "УДАЛИТЬ",
+            CloseButtonText = "ОТМЕНА",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot
         };
@@ -191,7 +186,7 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
-            await ShowErrorAsync("РЅРµС‚ СЃРІСЏР·Рё СЃ СЃРµСЂРІРµСЂРѕРј");
+            await ShowErrorAsync("нет связи с сервером");
         }
     }
 
@@ -201,13 +196,13 @@ public sealed partial class MainWindow : Window
         string password = "";
         if (ch.HasPassword)
         {
-            var passBox = new PasswordBox { PlaceholderText = "РїР°СЂРѕР»СЊ РєР°РЅР°Р»Р°" };
+            var passBox = new PasswordBox { PlaceholderText = "пароль канала" };
             var dialog = new ContentDialog
             {
-                Title = $"Р’С…РѕРґ РІ В«{ch.Name}В»",
+                Title = $"Вход в «{ch.Name}»",
                 Content = passBox,
-                PrimaryButtonText = "Р’РћР™РўР",
-                CloseButtonText = "РћРўРњР•РќРђ",
+                PrimaryButtonText = "ВОЙТИ",
+                CloseButtonText = "ОТМЕНА",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot
             };
@@ -224,7 +219,7 @@ public sealed partial class MainWindow : Window
             }
             catch
             {
-                await ShowErrorAsync("РЅРµС‚ СЃРІСЏР·Рё СЃ СЃРµСЂРІРµСЂРѕРј");
+                await ShowErrorAsync("нет связи с сервером");
                 return;
             }
         }
@@ -234,9 +229,9 @@ public sealed partial class MainWindow : Window
         _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
-        ChannelStatusText.Text = "РІ РіРѕР»РѕСЃРѕРІРѕРј РєР°РЅР°Р»Рµ";
+        ChannelStatusText.Text = "в голосовом канале";
         LeaveChannelBtn.Visibility = Visibility.Visible;
-        StatusText.Text = $"РїРѕРґРєР»СЋС‡РµРЅРѕ Рє {ch.Name}";
+        StatusText.Text = $"подключено к {ch.Name}";
         RenderChannels();
     }
 
@@ -244,10 +239,10 @@ public sealed partial class MainWindow : Window
     {
         _voice.Disconnect();
         _currentChannel = null;
-        ChannelNameText.Text = "РЅРµ РІ РєР°РЅР°Р»Рµ";
-        ChannelStatusText.Text = "РІС‹Р±РµСЂРё РєР°РЅР°Р» СЃР»РµРІР°";
+        ChannelNameText.Text = "не в канале";
+        ChannelStatusText.Text = "выбери канал слева";
         LeaveChannelBtn.Visibility = Visibility.Collapsed;
-        StatusText.Text = "РѕС‚РєР»СЋС‡РµРЅРѕ";
+        StatusText.Text = "отключено";
         _members.Clear();
         RenderChannels();
     }
@@ -256,15 +251,15 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new ContentDialog
         {
-            Title = "РћС€РёР±РєР°",
+            Title = "Ошибка",
             Content = msg,
-            CloseButtonText = "РћРљ",
+            CloseButtonText = "ОК",
             XamlRoot = Content.XamlRoot
         };
         await dialog.ShowAsync();
     }
 
-    // ---------- Р“РѕР»РѕСЃ ----------
+    // ---------- Голос ----------
 
     private void OnMembersChanged(IReadOnlyList<string> names)
     {
@@ -299,7 +294,7 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             PttButton.Background = BrushFromHex(talking ? "#3ba55d" : "#5865f2");
-            PttButtonText.Text = talking ? "Р“РћР’РћР РРЁР¬..." : "[SPACE] PTT";
+            PttButtonText.Text = talking ? "ГОВОРИШЬ..." : "[SPACE] PTT";
         });
     }
 
@@ -320,7 +315,7 @@ public sealed partial class MainWindow : Window
         _voice.OpenMic = false;
     }
 
-    // ---------- РљРЅРѕРїРєРё ----------
+    // ---------- Кнопки ----------
 
     private async void AddChannelBtn_Click(object sender, RoutedEventArgs e) => await CreateChannelAsync();
 
@@ -329,25 +324,25 @@ public sealed partial class MainWindow : Window
     private void MicMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = true;
-        MicMuteBtn.Content = "рџЋ™пёЏрџљ«";
+        MicMuteBtn.Content = "🎙️🚫";
     }
 
     private void MicMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = false;
-        MicMuteBtn.Content = "рџЋ™пёЏ";
+        MicMuteBtn.Content = "🎙️";
     }
 
     private void HeadMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = true;
-        HeadMuteBtn.Content = "рџ”‡";
+        HeadMuteBtn.Content = "🔇";
     }
 
     private void HeadMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = false;
-        HeadMuteBtn.Content = "рџ”Љ";
+        HeadMuteBtn.Content = "🔊";
     }
 
     private void DeafenBtn_Checked(object sender, RoutedEventArgs e)
@@ -356,7 +351,7 @@ public sealed partial class MainWindow : Window
         _voice.PlaybackMuted = true;
         MicMuteBtn.IsChecked = true;
         HeadMuteBtn.IsChecked = true;
-        DeafenBtn.Content = "рџ”‡вњ…";
+        DeafenBtn.Content = "🔇✅";
     }
 
     private void DeafenBtn_Unchecked(object sender, RoutedEventArgs e)
@@ -365,7 +360,7 @@ public sealed partial class MainWindow : Window
         _voice.PlaybackMuted = false;
         MicMuteBtn.IsChecked = false;
         HeadMuteBtn.IsChecked = false;
-        DeafenBtn.Content = "рџ”‡";
+        DeafenBtn.Content = "🔇";
     }
 
     private void SettingsBtn_Click(object sender, RoutedEventArgs e)
@@ -388,7 +383,7 @@ public sealed partial class MainWindow : Window
         Close();
     }
 
-    // ---------- РЈС‚РёР»РёС‚С‹ ----------
+    // ---------- Утилиты ----------
 
     internal static SolidColorBrush BrushFromHex(string hex)
     {
