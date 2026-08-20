@@ -24,4 +24,8 @@
     <PackageReference Include="RNNoise.NET" Version="1.0.0" />
     <None Include="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="CopyPriAfterPublish" AfterTargets="Publish">
+    <Copy SourceFiles="$(OutputPath)VoxCore.Client.pri" DestinationFolder="$(PublishDir)"
+          Condition="Exists('$(OutputPath)VoxCore.Client.pri')" />
+  </Target>
 </Project>
