@@ -50,6 +50,8 @@ public sealed class VoiceClient : IDisposable
     public event Action<string>? SpeakerStopped;
 
     public bool OpenMic { get; set; }
+    public bool MicMuted { get; set; }
+    public bool PlaybackMuted { get; set; }
     public int InputDevice { get; set; }
     public double MicGain { get; set; } = 1.0;
     private volatile bool _noiseSuppression = true;
@@ -151,7 +153,7 @@ public sealed class VoiceClient : IDisposable
 
         while (!_cts.IsCancellationRequested)
         {
-            var talk = OpenMic || (GetAsyncKeyState(VkSpace) & 0x8000) != 0;
+            var talk = !MicMuted && (OpenMic || (GetAsyncKeyState(VkSpace) & 0x8000) != 0);
             if (talk != lastTalk)
             {
                 lastTalk = talk;
@@ -288,7 +290,8 @@ public sealed class VoiceClient : IDisposable
                             outBytes[i * 2] = (byte)(pcmBuf[i] & 0xFF);
                             outBytes[i * 2 + 1] = (byte)((pcmBuf[i] >> 8) & 0xFF);
                         }
-                        _playbackBuffer.AddSamples(outBytes, 0, n * 2);
+                        if (!PlaybackMuted)
+                            _playbackBuffer.AddSamples(outBytes, 0, n * 2);
                         break;
 
                     case 0x06: // список участников

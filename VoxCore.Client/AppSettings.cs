@@ -5,7 +5,7 @@ namespace VoxCore.Client;
 
 public sealed class AppSettings
 {
-    public string Server { get; set; } = "194.31.204.5:9987";
+    public string Server { get; set; } = "194.31.204.5:9988";
     public string Room { get; set; } = "squad";
     public string Nickname { get; set; } = "Player";
     public int MicDevice { get; set; }
@@ -13,6 +13,10 @@ public sealed class AppSettings
     public bool OpenMic { get; set; }
     public bool NoiseSuppression { get; set; } = true;
     public string RoomPassword { get; set; } = "";
+    public string? Token { get; set; }
+    public int UserId { get; set; }
+    public string UserName { get; set; } = "";
+    public string UserColor { get; set; } = "#5865f2";
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoxCore", "settings.json");

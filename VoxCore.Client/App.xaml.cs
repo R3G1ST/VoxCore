@@ -17,7 +17,20 @@ public partial class App : Application
     {
         try
         {
-            _window = new MainWindow();
+            var settings = AppSettings.Load();
+            var host = settings.Server.Split(':')[0];
+
+            if (settings.Token is string token && settings.UserName.Length > 0)
+            {
+                var api = new ApiClient(host, 9988);
+                api.RestoreToken(token);
+                var user = new UserInfo { Id = settings.UserId, Name = settings.UserName, Color = settings.UserColor };
+                _window = new MainWindow(api, settings, user);
+            }
+            else
+            {
+                _window = new AuthWindow(settings, OnAuthenticated);
+            }
             _window.Activate();
         }
         catch (System.Exception ex)
@@ -25,6 +38,12 @@ public partial class App : Application
             LogCrash("OnLaunched", ex);
             throw;
         }
+    }
+
+    private void OnAuthenticated(ApiClient api, AppSettings settings, UserInfo user)
+    {
+        _window = new MainWindow(api, settings, user);
+        _window.Activate();
     }
 
     private static void LogCrash(string source, System.Exception? ex)
