@@ -47,7 +47,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Padding="16,8">
+                <Border x:Name="ChannelsHeader" Grid.Row="0" Padding="16,8">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -62,11 +62,11 @@
                     </Grid>
                 </Border>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="ChannelsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="ChannelsPanel" Padding="8,8" Spacing="2" />
                 </ScrollViewer>
 
-                <Grid x:Name="FriendsPanel" Grid.RowSpan="2" Visibility="Collapsed">
+                <Grid x:Name="FriendsPanel" Grid.RowSpan="2" Background="#2b2d31" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />

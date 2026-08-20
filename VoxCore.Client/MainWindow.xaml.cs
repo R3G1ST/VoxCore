@@ -416,6 +416,8 @@ public sealed partial class MainWindow : Window
         ChannelsTabBtn.Background = MainWindow.BrushFromHex("#5865f2");
         FriendsTabBtn.Background = MainWindow.BrushFromHex("#3f4248");
         FriendsPanel.Visibility = Visibility.Collapsed;
+        ChannelsHeader.Visibility = Visibility.Visible;
+        ChannelsScroll.Visibility = Visibility.Visible;
     }
 
     private void FriendsTabBtn_Click(object sender, RoutedEventArgs e)
@@ -423,6 +425,8 @@ public sealed partial class MainWindow : Window
         FriendsTabBtn.Background = MainWindow.BrushFromHex("#5865f2");
         ChannelsTabBtn.Background = MainWindow.BrushFromHex("#3f4248");
         FriendsPanel.Visibility = Visibility.Visible;
+        ChannelsHeader.Visibility = Visibility.Collapsed;
+        ChannelsScroll.Visibility = Visibility.Collapsed;
         _ = RefreshFriendsAsync();
     }
 
