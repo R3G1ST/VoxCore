@@ -31,6 +31,7 @@ public sealed class UserInfo
     public string Name { get; set; } = "";
     public string Color { get; set; } = "#5865f2";
     public bool Online { get; set; }
+    public string State { get; set; } = "None";
 }
 
 public sealed class ApiClient
@@ -184,7 +185,8 @@ public sealed class ApiClient
         Id = el.GetProperty("Id").GetInt32(),
         Name = el.GetProperty("Name").GetString() ?? "",
         Color = el.GetProperty("Color").GetString() ?? "#5865f2",
-        Online = el.TryGetProperty("Online", out var on) && on.GetBoolean()
+        Online = el.TryGetProperty("Online", out var on) && on.GetBoolean(),
+        State = el.TryGetProperty("State", out var st) ? st.GetString() : "None"
     };
 
     private static List<UserInfo> ParseUsers(JsonElement arr) =>

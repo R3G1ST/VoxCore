@@ -378,15 +378,33 @@ public sealed partial class MainWindow : Window
     private async void SearchResult_Click(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not FriendItem item) return;
+        switch (item.State)
+        {
+            case "Friend":
+                SearchInfo.Text = $"{item.Name} уже у тебя в друзьях";
+                return;
+            case "Requested":
+                SearchInfo.Text = $"запрос {item.Name} уже отправлен, ждёт принятия";
+                return;
+            case "Incoming":
+                SearchInfo.Text = $"{item.Name} уже отправил тебе запрос — прими его во вкладке Друзья";
+                return;
+        }
         SearchInfo.Text = "отправляю запрос...";
         try
         {
             await _api.AddFriendAsync(item.Name);
             SearchInfo.Text = $"запрос отправлен {item.Name}";
             SearchResultsList.Visibility = Visibility.Collapsed;
+            _ = RefreshFriendsAsync();
         }
         catch (ApiException ex)
         {
+            if (ex.Message == "unauthorized")
+            {
+                DispatcherQueue.TryEnqueue(ShowAuthAndClose);
+                return;
+            }
             SearchInfo.Text = ex.Message;
         }
         catch

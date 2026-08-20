@@ -52,6 +52,23 @@
                     <TextBlock x:Name="TestInfo" Text="" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
                 </StackPanel>
             </Border>
+
+            <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="ОБНОВЛЕНИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    <TextBlock x:Name="VerText" Text="" FontFamily="Cascadia Code" FontSize="13"
+                               FontWeight="Bold" Foreground="#dbdee1" />
+                    <TextBlock x:Name="UpdateStatus" Text="нажми «ПРОВЕРИТЬ ОБНОВЛЕНИЯ»" FontFamily="Cascadia Code"
+                               FontSize="11" Foreground="#949ba4" TextWrapping="Wrap" />
+                    <Button x:Name="CheckUpdateBtn" Content="ПРОВЕРИТЬ ОБНОВЛЕНИЯ" Style="{ThemeResource VcSmallButton}"
+                            HorizontalAlignment="Stretch" Click="CheckUpdateBtn_Click" />
+                    <Button x:Name="InstallUpdateBtn" Content="СКАЧАТЬ И УСТАНОВИТЬ" Style="{ThemeResource VcSmallButton}"
+                            Background="#3ba55d" HorizontalAlignment="Stretch" Visibility="Collapsed"
+                            Click="InstallUpdateBtn_Click" />
+                    <ProgressBar x:Name="UpdateProgress" Maximum="1" Minimum="0" Value="0"
+                                 Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"

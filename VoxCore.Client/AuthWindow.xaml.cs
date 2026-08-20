@@ -15,14 +15,32 @@ public sealed partial class AuthWindow : Window
         _settings = settings;
         _onAuthenticated = onAuthenticated;
         InitializeComponent();
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(420, 520));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(500, 600));
         AppWindow.Title = "VoxCore — вход";
+        SetupDarkTitleBar();
         var host = settings.Server.Split(':')[0];
         _api = new ApiClient(host, 9988);
         NameBox.Text = settings.UserName;
     }
 
     private readonly ApiClient _api;
+
+    private void SetupDarkTitleBar()
+    {
+        var tb = AppWindow.TitleBar;
+        Windows.UI.Color C(byte r, byte g, byte b) => Windows.UI.Color.FromArgb(255, r, g, b);
+        tb.BackgroundColor = C(30, 31, 34);
+        tb.ForegroundColor = C(148, 155, 164);
+        tb.ButtonBackgroundColor = C(30, 31, 34);
+        tb.ButtonForegroundColor = C(148, 155, 164);
+        tb.ButtonHoverBackgroundColor = C(57, 60, 67);
+        tb.ButtonHoverForegroundColor = C(255, 255, 255);
+        tb.ButtonPressedBackgroundColor = C(35, 37, 43);
+        tb.InactiveBackgroundColor = C(30, 31, 34);
+        tb.InactiveForegroundColor = C(90, 94, 102);
+        tb.ButtonInactiveBackgroundColor = C(30, 31, 34);
+        tb.ButtonInactiveForegroundColor = C(90, 94, 102);
+    }
 
     private async void AuthBtn_Click(object sender, RoutedEventArgs e)
     {

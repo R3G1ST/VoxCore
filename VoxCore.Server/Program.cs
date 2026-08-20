@@ -215,7 +215,14 @@ static string SearchUsers(JsonElement req, Store store, int userId)
     var query = (GetString(req, "query") ?? "").Trim();
     if (query.Length < 1) return Error("минимум 1 символ");
     var items = store.SearchUsers(query, userId)
-        .Select(u => new { u.Id, u.Name, u.Color, Online = store.Tokens.ContainsValue(u.Id) })
+        .Select(u => new
+        {
+            u.Id,
+            u.Name,
+            u.Color,
+            Online = store.Tokens.ContainsValue(u.Id),
+            State = store.GetFriendState(userId, u.Id).ToString()
+        })
         .ToList();
     return Ok(new { users = items });
 }
@@ -226,8 +233,17 @@ static string SendFriendRequest(JsonElement req, Store store, int userId)
     if (name.Length == 0) return Error("укажи ник");
     var target = store.FindUserByName(name);
     if (target is null) return Error("пользователь не найден");
+    switch (store.GetFriendState(userId, target.Id))
+    {
+        case FriendState.Friend:
+            return Error("вы уже друзья");
+        case FriendState.Requested:
+            return Error("запрос уже отправлен, ожидает принятия");
+        case FriendState.Incoming:
+            return Error("этот пользователь уже отправил тебе запрос — прими его во вкладке Друзья");
+    }
     if (!store.SendFriendRequest(userId, target.Id))
-        return Error("нельзя отправить запрос (уже друзья или запрос отправлен)");
+        return Error("нельзя отправить запрос");
     return Ok(new { });
 }
 

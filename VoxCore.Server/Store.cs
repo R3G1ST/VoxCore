@@ -16,6 +16,14 @@ public sealed class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+public enum FriendState
+{
+    None,
+    Friend,
+    Requested,  // запрос отправил я, ждёт принятия
+    Incoming    // запрос пришёл мне
+}
+
 public sealed class Channel
 {
     public int Id { get; set; }
@@ -116,11 +124,31 @@ public sealed class Store
             var target = FindUserById(targetId);
             var user = FindUserById(userId);
             if (user is null || target is null || user.Id == target.Id) return false;
-            if (user.Friends.Contains(targetId) || target.Friends.Contains(userId)) return false;
-            if (target.PendingRequests.Contains(userId)) return false;
+            if (user.Friends.Contains(targetId) || target.PendingRequests.Contains(userId) || user.PendingRequests.Contains(targetId)) return false;
+            if (target.Friends.Contains(userId))
+            {
+                // target уже считает меня другом (старые данные) — делаем дружбу взаимной
+                if (!user.Friends.Contains(targetId)) user.Friends.Add(targetId);
+                SaveUsers();
+                return true;
+            }
             target.PendingRequests.Add(userId);
             SaveUsers();
             return true;
+        }
+    }
+
+    public FriendState GetFriendState(int userId, int targetId)
+    {
+        lock (_lock)
+        {
+            var user = FindUserById(userId);
+            var target = FindUserById(targetId);
+            if (user is null || target is null) return FriendState.None;
+            if (user.Friends.Contains(targetId)) return FriendState.Friend;
+            if (user.PendingRequests.Contains(targetId)) return FriendState.Incoming;
+            if (target.PendingRequests.Contains(userId)) return FriendState.Requested;
+            return FriendState.None;
         }
     }
 
