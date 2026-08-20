@@ -11,6 +11,7 @@ public sealed class User
     public string PassHash { get; set; } = "";
     public string Color { get; set; } = "#5865f2";
     public List<int> Friends { get; set; } = [];
+    public List<int> PendingRequests { get; set; } = [];
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -102,6 +103,47 @@ public sealed class Store
         {
             var user = FindUserById(userId);
             if (user is null || !user.Friends.Remove(friendId)) return false;
+            SaveUsers();
+            return true;
+        }
+    }
+
+    public bool SendFriendRequest(int userId, int targetId)
+    {
+        lock (_lock)
+        {
+            var target = FindUserById(targetId);
+            var user = FindUserById(userId);
+            if (user is null || target is null || user.Id == target.Id) return false;
+            if (user.Friends.Contains(targetId) || target.Friends.Contains(userId)) return false;
+            if (target.PendingRequests.Contains(userId)) return false;
+            target.PendingRequests.Add(userId);
+            SaveUsers();
+            return true;
+        }
+    }
+
+    public bool AcceptFriendRequest(int userId, int fromId)
+    {
+        lock (_lock)
+        {
+            var user = FindUserById(userId);
+            var from = FindUserById(fromId);
+            if (user is null || from is null) return false;
+            if (!user.PendingRequests.Remove(fromId)) return false;
+            if (!user.Friends.Contains(fromId)) user.Friends.Add(fromId);
+            if (!from.Friends.Contains(userId)) from.Friends.Add(userId);
+            SaveUsers();
+            return true;
+        }
+    }
+
+    public bool DeclineFriendRequest(int userId, int fromId)
+    {
+        lock (_lock)
+        {
+            var user = FindUserById(userId);
+            if (user is null || !user.PendingRequests.Remove(fromId)) return false;
             SaveUsers();
             return true;
         }

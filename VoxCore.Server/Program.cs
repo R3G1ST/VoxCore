@@ -94,6 +94,10 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "add_friend" => user is null ? Error("unauthorized") : AddFriend(req, store, user.Id),
         "remove_friend" => user is null ? Error("unauthorized") : RemoveFriend(req, store, user.Id),
         "search_users" => user is null ? Error("unauthorized") : SearchUsers(req, store, user.Id),
+        "friend_request" => user is null ? Error("unauthorized") : SendFriendRequest(req, store, user.Id),
+        "friend_requests" => user is null ? Error("unauthorized") : FriendRequests(store, user.Id),
+        "accept_friend" => user is null ? Error("unauthorized") : AcceptFriend(req, store, user.Id),
+        "decline_friend" => user is null ? Error("unauthorized") : DeclineFriend(req, store, user.Id),
         _ => Error("unknown op")
     };
 }
@@ -214,6 +218,46 @@ static string SearchUsers(JsonElement req, Store store, int userId)
         .Select(u => new { u.Id, u.Name, u.Color, Online = store.Tokens.ContainsValue(u.Id) })
         .ToList();
     return Ok(new { users = items });
+}
+
+static string SendFriendRequest(JsonElement req, Store store, int userId)
+{
+    var name = (GetString(req, "name") ?? "").Trim();
+    if (name.Length == 0) return Error("укажи ник");
+    var target = store.FindUserByName(name);
+    if (target is null) return Error("пользователь не найден");
+    if (!store.SendFriendRequest(userId, target.Id))
+        return Error("нельзя отправить запрос (уже друзья или запрос отправлен)");
+    return Ok(new { });
+}
+
+static string FriendRequests(Store store, int userId)
+{
+    var user = store.FindUserById(userId);
+    if (user is null) return Error("пользователь не найден");
+    var onlineIds = store.Tokens.Values.ToHashSet();
+    var items = user.PendingRequests
+        .Select(store.FindUserById)
+        .Where(f => f is not null)
+        .Select(f => new { f!.Id, f.Name, f.Color, Online = onlineIds.Contains(f.Id) })
+        .ToList();
+    return Ok(new { requests = items });
+}
+
+static string AcceptFriend(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("id", out var idEl) || !idEl.TryGetInt32(out var id)) return Error("bad id");
+    return store.AcceptFriendRequest(userId, id)
+        ? Ok(new { })
+        : Error("запрос не найден");
+}
+
+static string DeclineFriend(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("id", out var idEl) || !idEl.TryGetInt32(out var id)) return Error("bad id");
+    return store.DeclineFriendRequest(userId, id)
+        ? Ok(new { })
+        : Error("запрос не найден");
 }
 
 static string GetString(JsonElement el, string prop) =>

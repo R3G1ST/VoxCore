@@ -69,8 +69,10 @@
                 <Grid x:Name="FriendsPanel" Grid.RowSpan="2" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
+
                     <StackPanel Grid.Row="0" Padding="12,8" Spacing="8">
                         <TextBlock Text="ПОИСК ДРУЗЕЙ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
                         <TextBox x:Name="SearchBox" PlaceholderText="ник пользователя..."
@@ -81,74 +83,118 @@
                                 HorizontalAlignment="Stretch" Click="SearchBtn_Click" />
                         <TextBlock x:Name="SearchInfo" Text="" FontFamily="Cascadia Code" FontSize="11"
                                    Foreground="#faa61a" TextWrapping="Wrap" />
-                        <ListView x:Name="SearchResultsList" Visibility="Collapsed" MaxHeight="220"
-                                  Background="Transparent" BorderThickness="0" SelectionMode="None"
-                                  IsItemClickEnabled="True" ItemClick="SearchResult_Click">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Padding="6,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Border Width="30" Height="30" CornerRadius="15"
-                                                Background="{Binding ColorBrush}">
-                                            <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code"
-                                                       FontWeight="Bold" Foreground="White" FontSize="13"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        </Border>
-                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code" FontSize="13"
-                                                       Foreground="#dbdee1" />
-                                            <TextBlock Text="{Binding Status}" FontFamily="Cascadia Code" FontSize="10"
-                                                       Foreground="#949ba4" />
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="＋" FontSize="16" Foreground="#3ba55d"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" Padding="8,8" Spacing="4">
-                        <TextBlock Text="МОИ ДРУЗЬЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
-                                   Padding="8,4" />
-                        <ListView x:Name="FriendsList" Background="Transparent" BorderThickness="0"
-                                  SelectionMode="None">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Padding="6,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Border Width="32" Height="32" CornerRadius="16"
-                                                Background="{Binding ColorBrush}">
-                                            <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code"
-                                                       FontWeight="Bold" Foreground="White" FontSize="13"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        </Border>
-                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code"
-                                                           FontSize="13" Foreground="#dbdee1" />
-                                                <Ellipse Width="8" Height="8" Fill="{Binding OnlineBrush}"
-                                                         VerticalAlignment="Center" />
-                                            </StackPanel>
-                                            <TextBlock Text="{Binding Status}" FontFamily="Cascadia Code" FontSize="10"
-                                                       Foreground="#949ba4" />
-                                        </StackPanel>
-                                        <Button Grid.Column="2" Content="✕" Width="30" Height="30" Padding="0"
-                                                Background="Transparent" BorderThickness="0" Foreground="#949ba4"
-                                                Tag="{Binding Id}" Click="FriendRemove_Click" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </StackPanel>
+                    <ListView x:Name="SearchResultsList" Grid.Row="1" Visibility="Collapsed" MaxHeight="180"
+                              Margin="12,0,12,4" Background="Transparent" BorderThickness="0" SelectionMode="None"
+                              IsItemClickEnabled="True" ItemClick="SearchResult_Click">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="6,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="30" Height="30" CornerRadius="15"
+                                            Background="{Binding ColorBrush}">
+                                        <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code"
+                                                   FontWeight="Bold" Foreground="White" FontSize="13"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code" FontSize="13"
+                                                   Foreground="#dbdee1" />
+                                        <TextBlock Text="{Binding Status}" FontFamily="Cascadia Code" FontSize="10"
+                                                   Foreground="#949ba4" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="＋" FontSize="16" Foreground="#3ba55d"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="8" Padding="8,0,8,8">
+                            <StackPanel x:Name="RequestsSection" Spacing="4">
+                                <TextBlock Text="ВХОДЯЩИЕ ЗАПРОСЫ" FontFamily="Cascadia Code" FontSize="11"
+                                           Foreground="#faa61a" Padding="8,4" />
+                                <ListView x:Name="RequestsList" Background="Transparent" BorderThickness="0"
+                                          SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="6,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="32" Height="32" CornerRadius="16"
+                                                        Background="{Binding ColorBrush}">
+                                                    <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code"
+                                                               FontWeight="Bold" Foreground="White" FontSize="13"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code"
+                                                               FontSize="13" Foreground="#dbdee1" />
+                                                    <TextBlock Text="хочет быть твоим другом" FontFamily="Cascadia Code"
+                                                               FontSize="10" Foreground="#949ba4" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                                    <Button Content="✓" Width="30" Height="30" Padding="0"
+                                                            Background="#3ba55d" BorderThickness="0" Foreground="White"
+                                                            Tag="{Binding Id}" Click="RequestAccept_Click" />
+                                                    <Button Content="✕" Width="30" Height="30" Padding="0"
+                                                            Background="#ed4245" BorderThickness="0" Foreground="White"
+                                                            Tag="{Binding Id}" Click="RequestDecline_Click" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="МОИ ДРУЗЬЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
+                                           Padding="8,4" />
+                                <ListView x:Name="FriendsList" Background="Transparent" BorderThickness="0"
+                                          SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="6,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="32" Height="32" CornerRadius="16"
+                                                        Background="{Binding ColorBrush}">
+                                                    <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code"
+                                                               FontWeight="Bold" Foreground="White" FontSize="13"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code"
+                                                                   FontSize="13" Foreground="#dbdee1" />
+                                                        <Ellipse Width="8" Height="8" Fill="{Binding OnlineBrush}"
+                                                                 VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Status}" FontFamily="Cascadia Code"
+                                                               FontSize="10" Foreground="#949ba4" />
+                                                </StackPanel>
+                                                <Button Grid.Column="2" Content="✕" Width="30" Height="30" Padding="0"
+                                                        Background="Transparent" BorderThickness="0" Foreground="#949ba4"
+                                                        Tag="{Binding Id}" Click="FriendRemove_Click" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Grid>
         </Grid>

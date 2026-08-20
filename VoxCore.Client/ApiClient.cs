@@ -127,9 +127,28 @@ public sealed class ApiClient
 
     public async Task<UserInfo> AddFriendAsync(string name)
     {
-        var r = await CallAsync(new { op = "add_friend", token = Token, name });
-        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось добавить друга");
-        return ParseUser(r.Data.GetProperty("friend"));
+        var r = await CallAsync(new { op = "friend_request", token = Token, name });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить запрос");
+        return new UserInfo { Name = name };
+    }
+
+    public async Task<List<UserInfo>> GetFriendRequestsAsync()
+    {
+        var r = await CallAsync(new { op = "friend_requests", token = Token });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось получить запросы");
+        return ParseUsers(r.Data.GetProperty("requests"));
+    }
+
+    public async Task AcceptFriendRequestAsync(int id)
+    {
+        var r = await CallAsync(new { op = "accept_friend", token = Token, id });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось принять запрос");
+    }
+
+    public async Task DeclineFriendRequestAsync(int id)
+    {
+        var r = await CallAsync(new { op = "decline_friend", token = Token, id });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отклонить запрос");
     }
 
     public async Task RemoveFriendAsync(int id)

@@ -63,6 +63,7 @@ public sealed partial class MainWindow : Window
         Closed += OnWindowClosed;
         _voice.OpenMic = true;
         _ = RefreshChannelsAsync();
+        _ = RefreshFriendsAsync();
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
@@ -287,6 +288,12 @@ public sealed partial class MainWindow : Window
         {
             var friends = await _api.GetFriendsAsync();
             FriendsList.ItemsSource = friends.Select(FriendItem.FromUser).ToList();
+
+            var requests = await _api.GetFriendRequestsAsync();
+            var reqItems = requests.Select(FriendItem.FromUser).ToList();
+            RequestsList.ItemsSource = reqItems;
+            RequestsSection.Visibility = reqItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            FriendsTabBtn.Content = reqItems.Count > 0 ? $"ДРУЗЬЯ ({reqItems.Count})" : "ДРУЗЬЯ";
         }
         catch
         {
@@ -345,14 +352,12 @@ public sealed partial class MainWindow : Window
     private async void SearchResult_Click(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not FriendItem item) return;
-        SearchInfo.Text = "добавляю...";
+        SearchInfo.Text = "отправляю запрос...";
         try
         {
             await _api.AddFriendAsync(item.Name);
-            SearchInfo.Text = $"{item.Name} добавлен в друзья";
-            SearchBox.Text = "";
+            SearchInfo.Text = $"запрос отправлен {item.Name}";
             SearchResultsList.Visibility = Visibility.Collapsed;
-            await RefreshFriendsAsync();
         }
         catch (ApiException ex)
         {
@@ -361,6 +366,34 @@ public sealed partial class MainWindow : Window
         catch
         {
             SearchInfo.Text = "нет связи с сервером";
+        }
+    }
+
+    private async void RequestAccept_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+        try
+        {
+            await _api.AcceptFriendRequestAsync(id);
+            await RefreshFriendsAsync();
+        }
+        catch
+        {
+            // игнорируем
+        }
+    }
+
+    private async void RequestDecline_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+        try
+        {
+            await _api.DeclineFriendRequestAsync(id);
+            await RefreshFriendsAsync();
+        }
+        catch
+        {
+            // игнорируем
         }
     }
 
