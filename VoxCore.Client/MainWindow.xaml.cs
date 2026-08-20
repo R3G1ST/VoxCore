@@ -83,6 +83,10 @@ public sealed partial class MainWindow : Window
             _channels = channels;
             RenderChannels();
         }
+        catch (ApiException ex) when (ex.Message == "unauthorized")
+        {
+            DispatcherQueue.TryEnqueue(ShowAuthAndClose);
+        }
         catch
         {
             // сервер недоступен — просто не обновляем
@@ -295,10 +299,27 @@ public sealed partial class MainWindow : Window
             RequestsSection.Visibility = reqItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             FriendsTabBtn.Content = reqItems.Count > 0 ? $"ДРУЗЬЯ ({reqItems.Count})" : "ДРУЗЬЯ";
         }
+        catch (ApiException ex) when (ex.Message == "unauthorized")
+        {
+            DispatcherQueue.TryEnqueue(ShowAuthAndClose);
+        }
         catch
         {
             // сервер недоступен — не обновляем
         }
+    }
+
+    private void ShowAuthAndClose()
+    {
+        _refreshTimer.Stop();
+        _voice.Dispose();
+        var authWin = new AuthWindow(_settings, (api, settings, user) =>
+        {
+            var win = new MainWindow(api, settings, user);
+            win.Activate();
+        });
+        authWin.Activate();
+        Close();
     }
 
     private async Task DoSearchAsync()
@@ -329,6 +350,11 @@ public sealed partial class MainWindow : Window
         }
         catch (ApiException ex)
         {
+            if (ex.Message == "unauthorized")
+            {
+                DispatcherQueue.TryEnqueue(ShowAuthAndClose);
+                return;
+            }
             SearchInfo.Text = ex.Message;
         }
         catch

@@ -10,6 +10,7 @@ public sealed class User
     public string Name { get; set; } = "";
     public string PassHash { get; set; } = "";
     public string Color { get; set; } = "#5865f2";
+    public string? Token { get; set; }
     public List<int> Friends { get; set; } = [];
     public List<int> PendingRequests { get; set; } = [];
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -190,13 +191,24 @@ public sealed class Store
     public string IssueToken(User user)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-        lock (_lock) Tokens[token] = user.Id;
+        lock (_lock)
+        {
+            user.Token = token;
+            Tokens[token] = user.Id;
+            SaveUsers();
+        }
         return token;
     }
 
     public User? AuthByToken(string token)
     {
         lock (_lock)
-            return token is not null && Tokens.TryGetValue(token, out var id) ? FindUserById(id) : null;
+        {
+            if (token is null) return null;
+            if (Tokens.TryGetValue(token, out var id)) return FindUserById(id);
+            var user = Users.FirstOrDefault(u => u.Token == token);
+            if (user is not null) Tokens[token] = user.Id; // восстановление сессии после рестарта
+            return user;
+        }
     }
 }
