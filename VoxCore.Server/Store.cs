@@ -24,6 +24,17 @@ public enum FriendState
     Incoming    // запрос пришёл мне
 }
 
+public sealed class Message
+{
+    public int Id { get; set; }
+    public int FromUserId { get; set; }
+    public int ToUserId { get; set; }
+    public int ChannelId { get; set; }
+    public string Text { get; set; } = "";
+    public DateTime SentAt { get; set; } = DateTime.UtcNow;
+    public bool Read { get; set; }
+}
+
 public sealed class Channel
 {
     public int Id { get; set; }
@@ -40,6 +51,7 @@ public sealed class Store
 
     public List<User> Users { get; private set; } = [];
     public List<Channel> Channels { get; private set; } = [];
+    public List<Message> Messages { get; private set; } = [];
     public Dictionary<string, int> Tokens { get; } = new(); // token -> userId
 
     public Store(string dataDir)
@@ -54,6 +66,7 @@ public sealed class Store
 
     private string UsersPath => Path.Combine(_dir, "users.json");
     private string ChannelsPath => Path.Combine(_dir, "channels.json");
+    private string MessagesPath => Path.Combine(_dir, "messages.json");
 
     private void Load()
     {
@@ -63,11 +76,96 @@ public sealed class Store
                 Users = JsonSerializer.Deserialize<List<User>>(File.ReadAllText(UsersPath)) ?? [];
             if (File.Exists(ChannelsPath))
                 Channels = JsonSerializer.Deserialize<List<Channel>>(File.ReadAllText(ChannelsPath)) ?? [];
+            if (File.Exists(MessagesPath))
+                Messages = JsonSerializer.Deserialize<List<Message>>(File.ReadAllText(MessagesPath)) ?? [];
         }
     }
 
     public void SaveUsers() => Save(UsersPath, Users);
     public void SaveChannels() => Save(ChannelsPath, Channels);
+    public void SaveMessages() => Save(MessagesPath, Messages);
+
+    public Message SendMessage(int fromUserId, int toUserId, string text)
+    {
+        lock (_lock)
+        {
+            var msg = new Message
+            {
+                Id = Messages.Count > 0 ? Messages.Max(m => m.Id) + 1 : 1,
+                FromUserId = fromUserId,
+                ToUserId = toUserId,
+                Text = text,
+                SentAt = DateTime.UtcNow
+            };
+            Messages.Add(msg);
+            SaveMessages();
+            return msg;
+        }
+    }
+
+    public List<Message> GetMessages(int userId, int otherUserId, int limit = 50)
+    {
+        lock (_lock)
+        {
+            return Messages
+                .Where(m => (m.FromUserId == userId && m.ToUserId == otherUserId) ||
+                           (m.FromUserId == otherUserId && m.ToUserId == userId))
+                .OrderByDescending(m => m.SentAt)
+                .Take(limit)
+                .OrderBy(m => m.SentAt)
+                .ToList();
+        }
+    }
+
+    public void MarkAsRead(int userId, int otherUserId)
+    {
+        lock (_lock)
+        {
+            foreach (var m in Messages.Where(m => m.FromUserId == otherUserId && m.ToUserId == userId && !m.Read))
+                m.Read = true;
+            SaveMessages();
+        }
+    }
+
+    public int GetUnreadCount(int userId)
+    {
+        lock (_lock)
+        {
+            return Messages.Count(m => m.ToUserId == userId && !m.Read);
+        }
+    }
+
+    public Message SendChannelMessage(int channelId, int fromUserId, string text)
+    {
+        lock (_lock)
+        {
+            var msg = new Message
+            {
+                Id = Messages.Count > 0 ? Messages.Max(m => m.Id) + 1 : 1,
+                FromUserId = fromUserId,
+                ToUserId = 0,
+                ChannelId = channelId,
+                Text = text,
+                SentAt = DateTime.UtcNow
+            };
+            Messages.Add(msg);
+            SaveMessages();
+            return msg;
+        }
+    }
+
+    public List<Message> GetChannelMessages(int channelId, int limit = 100)
+    {
+        lock (_lock)
+        {
+            return Messages
+                .Where(m => m.ChannelId == channelId)
+                .OrderByDescending(m => m.SentAt)
+                .Take(limit)
+                .OrderBy(m => m.SentAt)
+                .ToList();
+        }
+    }
 
     private void Save(string path, object data)
     {

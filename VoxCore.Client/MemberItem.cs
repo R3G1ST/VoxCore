@@ -23,8 +23,13 @@ public sealed class MemberItem : INotifyPropertyChanged
             if (_isSpeaking == value) return;
             _isSpeaking = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSpeaking)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakingText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakingBrush)));
         }
     }
+
+    public string SpeakingText => _isSpeaking ? "●" : "";
+    public Brush SpeakingBrush => _isSpeaking ? MainWindow.BrushFromHex("#3ba55d") : MainWindow.BrushFromHex("#00000000");
 
     public MemberItem(string name)
     {

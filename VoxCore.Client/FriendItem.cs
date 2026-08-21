@@ -6,6 +6,7 @@ public sealed class FriendItem
 {
     public int Id { get; }
     public string Name { get; }
+    public string HexColor { get; }
     public string Letter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
     public Brush ColorBrush { get; }
     public bool Online { get; }
@@ -36,6 +37,7 @@ public sealed class FriendItem
     {
         Id = id;
         Name = name;
+        HexColor = color;
         ColorBrush = MainWindow.BrushFromHex(color);
         Online = online;
         State = state;

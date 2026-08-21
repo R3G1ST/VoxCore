@@ -14,7 +14,6 @@
             <SolidColorBrush x:Key="AccentBrush" Color="#00ff88" />
             <SolidColorBrush x:Key="DimBrush" Color="#5a5a6a" />
             <SolidColorBrush x:Key="UserColorBrush" Color="#5865f2" />
-            <local:BooleanToVisibilityConverter x:Key="BoolToVis" />
             <Style x:Key="VcButton" TargetType="Button">
                 <Setter Property="Background" Value="#08080e" />
                 <Setter Property="Foreground" Value="#e8e8f0" />

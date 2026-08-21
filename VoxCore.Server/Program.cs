@@ -98,6 +98,12 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "friend_requests" => user is null ? Error("unauthorized") : FriendRequests(store, user.Id),
         "accept_friend" => user is null ? Error("unauthorized") : AcceptFriend(req, store, user.Id),
         "decline_friend" => user is null ? Error("unauthorized") : DeclineFriend(req, store, user.Id),
+        "send_message" => user is null ? Error("unauthorized") : SendMessage(req, store, user.Id),
+        "get_messages" => user is null ? Error("unauthorized") : GetMessages(req, store, user.Id),
+        "mark_read" => user is null ? Error("unauthorized") : MarkRead(req, store, user.Id),
+        "unread_count" => user is null ? Error("unauthorized") : UnreadCount(store, user.Id),
+        "send_channel_message" => user is null ? Error("unauthorized") : SendChannelMessage(req, store, user.Id),
+        "get_channel_messages" => user is null ? Error("unauthorized") : GetChannelMessages(req, store, user.Id),
         _ => Error("unknown op")
     };
 }
@@ -274,6 +280,67 @@ static string DeclineFriend(JsonElement req, Store store, int userId)
     return store.DeclineFriendRequest(userId, id)
         ? Ok(new { })
         : Error("запрос не найден");
+}
+
+static string SendMessage(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("to", out var toEl) || !toEl.TryGetInt32(out var toId)) return Error("bad to");
+    var text = (GetString(req, "text") ?? "").Trim();
+    if (text.Length == 0) return Error("текст пустой");
+    if (text.Length > 2000) return Error("максимум 2000 символов");
+    var target = store.FindUserById(toId);
+    if (target is null) return Error("пользователь не найден");
+    var msg = store.SendMessage(userId, toId, text);
+    return Ok(new { message = new { msg.Id, From = userId, To = toId, msg.Text, Sent = msg.SentAt } });
+}
+
+static string GetMessages(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("with", out var withEl) || !withEl.TryGetInt32(out var withId)) return Error("bad with");
+    var limit = req.TryGetProperty("limit", out var lEl) && lEl.TryGetInt32(out var l) ? Math.Clamp(l, 1, 200) : 50;
+    var msgs = store.GetMessages(userId, withId, limit)
+        .Select(m => new { m.Id, From = m.FromUserId, To = m.ToUserId, m.Text, Sent = m.SentAt, m.Read })
+        .ToList();
+    store.MarkAsRead(userId, withId);
+    return Ok(new { messages = msgs });
+}
+
+static string MarkRead(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("with", out var withEl) || !withEl.TryGetInt32(out var withId)) return Error("bad with");
+    store.MarkAsRead(userId, withId);
+    return Ok(new { });
+}
+
+static string UnreadCount(Store store, int userId)
+{
+    return Ok(new { count = store.GetUnreadCount(userId) });
+}
+
+static string SendChannelMessage(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("channel", out var chEl) || !chEl.TryGetInt32(out var channelId)) return Error("bad channel");
+    var text = (GetString(req, "text") ?? "").Trim();
+    if (text.Length == 0) return Error("текст пустой");
+    if (text.Length > 2000) return Error("максимум 2000 символов");
+    if (store.Channels.All(c => c.Id != channelId)) return Error("канал не найден");
+    var msg = store.SendChannelMessage(channelId, userId, text);
+    var sender = store.FindUserById(userId);
+    return Ok(new { message = new { msg.Id, SenderId = userId, Sender = sender?.Name ?? "?", SenderColor = sender?.Color ?? "#5865f2", msg.Text, Sent = msg.SentAt } });
+}
+
+static string GetChannelMessages(JsonElement req, Store store, int userId)
+{
+    if (!req.TryGetProperty("channel", out var chEl) || !chEl.TryGetInt32(out var channelId)) return Error("bad channel");
+    var limit = req.TryGetProperty("limit", out var lEl) && lEl.TryGetInt32(out var l) ? Math.Clamp(l, 1, 500) : 100;
+    var msgs = store.GetChannelMessages(channelId, limit)
+        .Select(m =>
+        {
+            var sender = store.FindUserById(m.FromUserId);
+            return new { m.Id, SenderId = m.FromUserId, Sender = sender?.Name ?? "?", SenderColor = sender?.Color ?? "#5865f2", m.Text, Sent = m.SentAt };
+        })
+        .ToList();
+    return Ok(new { messages = msgs });
 }
 
 static string GetString(JsonElement el, string prop) =>

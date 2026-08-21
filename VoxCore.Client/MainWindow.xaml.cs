@@ -6,16 +6,32 @@ using Microsoft.UI.Xaml.Media;
 
 namespace VoxCore.Client;
 
+public sealed class ChatMessage
+{
+    public string SenderName { get; set; } = "";
+    public string SenderColor { get; set; } = "#5865f2";
+    public string Letter => SenderName.Length > 0 ? SenderName[..1].ToUpperInvariant() : "?";
+    public SolidColorBrush ColorBrush => MainWindow.BrushFromHex(SenderColor);
+    public string TimeText { get; set; } = "";
+    public string Text { get; set; } = "";
+}
+
 public sealed partial class MainWindow : Window
 {
     private readonly ApiClient _api;
     private readonly AppSettings _settings;
     private readonly VoiceClient _voice = new();
     private readonly ObservableCollection<MemberItem> _members = [];
+    private readonly ObservableCollection<ChatMessage> _channelMessages = [];
+    private readonly ObservableCollection<ChatMessage> _dmMessages = [];
     private readonly UserInfo _user;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly DispatcherTimer _chatTimer;
     private List<ChannelInfo> _channels = [];
     private ChannelInfo? _currentChannel;
+    private UserInfo? _currentDmFriend;
+    private int _lastChannelMsgId;
+    private int _lastDmMsgId;
 
     public MainWindow(ApiClient api, AppSettings settings, UserInfo user)
     {
@@ -46,6 +62,8 @@ public sealed partial class MainWindow : Window
         UserNameText.Text = user.Name;
 
         MembersList.ItemsSource = _members;
+        ChannelChatList.ItemsSource = _channelMessages;
+        DmChatList.ItemsSource = _dmMessages;
         _voice.MembersChanged += OnMembersChanged;
         _voice.TalkingChanged += OnTalkingChanged;
         _voice.StatusChanged += OnStatusChanged;
@@ -60,6 +78,9 @@ public sealed partial class MainWindow : Window
         };
         _refreshTimer.Start();
 
+        _chatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _chatTimer.Tick += async (_, _) => await RefreshChatAsync();
+
         Closed += OnWindowClosed;
         _voice.OpenMic = true;
         _ = RefreshChannelsAsync();
@@ -69,6 +90,7 @@ public sealed partial class MainWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         _refreshTimer.Stop();
+        _chatTimer.Stop();
         _voice.Dispose();
         _settings.Save();
     }
@@ -257,6 +279,13 @@ public sealed partial class MainWindow : Window
         ChannelStatusText.Text = "в голосовом канале";
         LeaveChannelBtn.Visibility = Visibility.Visible;
         StatusText.Text = $"подключено к {ch.Name}";
+        VoiceStatusPanel.Visibility = Visibility.Collapsed;
+        ChannelChatPanel.Visibility = Visibility.Visible;
+        _lastChannelMsgId = 0;
+        _channelMessages.Clear();
+        CloseDmPanel();
+        _chatTimer.Start();
+        _ = LoadChannelChatAsync();
         RenderChannels();
     }
 
@@ -268,6 +297,11 @@ public sealed partial class MainWindow : Window
         ChannelStatusText.Text = "выбери канал слева";
         LeaveChannelBtn.Visibility = Visibility.Collapsed;
         StatusText.Text = "отключено";
+        VoiceStatusPanel.Visibility = Visibility.Visible;
+        ChannelChatPanel.Visibility = Visibility.Collapsed;
+        _chatTimer.Stop();
+        _channelMessages.Clear();
+        _lastChannelMsgId = 0;
         _members.Clear();
         RenderChannels();
     }
@@ -462,6 +496,7 @@ public sealed partial class MainWindow : Window
         FriendsPanel.Visibility = Visibility.Collapsed;
         ChannelsHeader.Visibility = Visibility.Visible;
         ChannelsScroll.Visibility = Visibility.Visible;
+        CloseDmPanel();
     }
 
     private void FriendsTabBtn_Click(object sender, RoutedEventArgs e)
@@ -603,6 +638,190 @@ public sealed partial class MainWindow : Window
     {
         var settingsWin = new SettingsWindow(_settings, _voice);
         settingsWin.Activate();
+    }
+
+    // ---------- Чат в канале ----------
+
+    private async Task LoadChannelChatAsync()
+    {
+        if (_currentChannel is null) return;
+        try
+        {
+            var msgs = await _api.GetChannelMessagesAsync(_currentChannel.Id, 100);
+            foreach (var m in msgs.Where(m => m.Id > _lastChannelMsgId))
+            {
+                _channelMessages.Add(new ChatMessage
+                {
+                    SenderName = m.SenderName,
+                    SenderColor = m.SenderColor,
+                    TimeText = m.SentAt.ToLocalTime().ToString("HH:mm"),
+                    Text = m.Text
+                });
+                _lastChannelMsgId = m.Id;
+            }
+            if (_channelMessages.Count > 0)
+                ChannelChatList.ScrollIntoView(_channelMessages[^1]);
+        }
+        catch { }
+    }
+
+    private async Task RefreshChatAsync()
+    {
+        if (_currentChannel is null && _currentDmFriend is null) return;
+        if (_currentChannel is not null) await LoadChannelChatAsync();
+        if (_currentDmFriend is not null) await LoadDmChatAsync();
+    }
+
+    private async Task SendChannelChatAsync()
+    {
+        if (_currentChannel is null) return;
+        var text = ChannelChatInput.Text.Trim();
+        if (text.Length == 0) return;
+        ChannelChatInput.Text = "";
+        try
+        {
+            await _api.SendChannelMessageAsync(_currentChannel.Id, text);
+            _channelMessages.Add(new ChatMessage
+            {
+                SenderName = _user.Name,
+                SenderColor = _user.Color,
+                TimeText = DateTime.Now.ToString("HH:mm"),
+                Text = text
+            });
+            ChannelChatList.ScrollIntoView(_channelMessages[^1]);
+        }
+        catch (ApiException ex)
+        {
+            if (ex.Message == "unauthorized") { DispatcherQueue.TryEnqueue(ShowAuthAndClose); return; }
+            ChannelChatInput.Text = text;
+        }
+        catch
+        {
+            ChannelChatInput.Text = text;
+        }
+    }
+
+    private async void ChannelChatInput_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+            await SendChannelChatAsync();
+    }
+
+    private async void ChannelChatSend_Click(object sender, RoutedEventArgs e) => await SendChannelChatAsync();
+
+    // ---------- Личные сообщения ----------
+
+    private void OpenDmPanel(UserInfo friend)
+    {
+        _currentDmFriend = friend;
+        _lastDmMsgId = 0;
+        _dmMessages.Clear();
+        DmFriendAvatar.Background = BrushFromHex(friend.Color);
+        DmFriendLetter.Text = friend.Name.Length > 0 ? friend.Name[..1].ToUpperInvariant() : "?";
+        DmFriendName.Text = friend.Name;
+        ChannelChatPanel.Visibility = Visibility.Collapsed;
+        VoiceStatusPanel.Visibility = Visibility.Collapsed;
+        DmPanel.Visibility = Visibility.Visible;
+        _chatTimer.Stop();
+        _chatTimer.Start();
+        _ = LoadDmChatAsync();
+    }
+
+    private void CloseDmPanel()
+    {
+        _currentDmFriend = null;
+        _dmMessages.Clear();
+        _lastDmMsgId = 0;
+        DmPanel.Visibility = Visibility.Collapsed;
+        if (_currentChannel is not null)
+        {
+            ChannelChatPanel.Visibility = Visibility.Visible;
+            VoiceStatusPanel.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            VoiceStatusPanel.Visibility = Visibility.Visible;
+            ChannelChatPanel.Visibility = Visibility.Collapsed;
+        }
+        if (_currentChannel is null && _currentDmFriend is null)
+            _chatTimer.Stop();
+    }
+
+    private void DmBack_Click(object sender, RoutedEventArgs e)
+    {
+        CloseDmPanel();
+        _chatTimer.Stop();
+    }
+
+    private async Task LoadDmChatAsync()
+    {
+        if (_currentDmFriend is null) return;
+        try
+        {
+            var msgs = await _api.GetMessagesAsync(_currentDmFriend.Id, 100);
+            foreach (var m in msgs.Where(m => m.Id > _lastDmMsgId))
+            {
+                var isMe = m.FromUserId == _user.Id;
+                _dmMessages.Add(new ChatMessage
+                {
+                    SenderName = isMe ? _user.Name : _currentDmFriend.Name,
+                    SenderColor = isMe ? _user.Color : _currentDmFriend.Color,
+                    TimeText = m.SentAt.ToLocalTime().ToString("HH:mm"),
+                    Text = m.Text
+                });
+                _lastDmMsgId = m.Id;
+            }
+            if (_dmMessages.Count > 0)
+                DmChatList.ScrollIntoView(_dmMessages[^1]);
+            await _api.MarkAsReadAsync(_currentDmFriend.Id);
+        }
+        catch { }
+    }
+
+    private async Task SendDmAsync()
+    {
+        if (_currentDmFriend is null) return;
+        var text = DmChatInput.Text.Trim();
+        if (text.Length == 0) return;
+        DmChatInput.Text = "";
+        try
+        {
+            await _api.SendMessageAsync(_currentDmFriend.Id, text);
+            _dmMessages.Add(new ChatMessage
+            {
+                SenderName = _user.Name,
+                SenderColor = _user.Color,
+                TimeText = DateTime.Now.ToString("HH:mm"),
+                Text = text
+            });
+            DmChatList.ScrollIntoView(_dmMessages[^1]);
+        }
+        catch (ApiException ex)
+        {
+            if (ex.Message == "unauthorized") { DispatcherQueue.TryEnqueue(ShowAuthAndClose); return; }
+            DmChatInput.Text = text;
+        }
+        catch
+        {
+            DmChatInput.Text = text;
+        }
+    }
+
+    private async void DmChatInput_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+            await SendDmAsync();
+    }
+
+    private async void DmChatSend_Click(object sender, RoutedEventArgs e) => await SendDmAsync();
+
+    private void FriendDm_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+        var friends = FriendsList.ItemsSource as List<FriendItem>;
+        var friend = friends?.FirstOrDefault(f => f.Id == id);
+        if (friend is null) return;
+        OpenDmPanel(new UserInfo { Id = friend.Id, Name = friend.Name, Color = friend.HexColor });
     }
 
     private void LogoutBtn_Click(object sender, RoutedEventArgs e)

@@ -34,6 +34,19 @@ public sealed class UserInfo
     public string State { get; set; } = "None";
 }
 
+public sealed class MessageInfo
+{
+    public int Id { get; set; }
+    public int SenderId { get; set; }
+    public string SenderName { get; set; } = "";
+    public string SenderColor { get; set; } = "#5865f2";
+    public int FromUserId { get; set; }
+    public int ToUserId { get; set; }
+    public string Text { get; set; } = "";
+    public DateTime SentAt { get; set; }
+    public bool Read { get; set; }
+}
+
 public sealed class ApiClient
 {
     private readonly string _host;
@@ -156,6 +169,71 @@ public sealed class ApiClient
     {
         var r = await CallAsync(new { op = "remove_friend", token = Token, id });
         if (!r.Ok) throw new ApiException(r.Err ?? "не удалось удалить друга");
+    }
+
+    public async Task SendMessageAsync(int toId, string text)
+    {
+        var r = await CallAsync(new { op = "send_message", token = Token, to = toId, text });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить сообщение");
+    }
+
+    public async Task<List<MessageInfo>> GetMessagesAsync(int withId, int limit = 50)
+    {
+        var r = await CallAsync(new { op = "get_messages", token = Token, with = withId, limit });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось получить сообщения");
+        var msgs = new List<MessageInfo>();
+        foreach (var m in r.Data.GetProperty("messages").EnumerateArray())
+        {
+            msgs.Add(new MessageInfo
+            {
+                Id = m.GetProperty("Id").GetInt32(),
+                FromUserId = m.GetProperty("From").GetInt32(),
+                ToUserId = m.GetProperty("To").GetInt32(),
+                Text = m.GetProperty("Text").GetString() ?? "",
+                SentAt = m.GetProperty("Sent").GetDateTime(),
+                Read = m.GetProperty("Read").GetBoolean()
+            });
+        }
+        return msgs;
+    }
+
+    public async Task MarkAsReadAsync(int withId)
+    {
+        var r = await CallAsync(new { op = "mark_read", token = Token, with = withId });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось пометить как прочитанное");
+    }
+
+    public async Task<int> GetUnreadCountAsync()
+    {
+        var r = await CallAsync(new { op = "unread_count", token = Token });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось получить количество непрочитанных");
+        return r.Data.GetProperty("count").GetInt32();
+    }
+
+    public async Task SendChannelMessageAsync(int channelId, string text)
+    {
+        var r = await CallAsync(new { op = "send_channel_message", token = Token, channel = channelId, text });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить сообщение");
+    }
+
+    public async Task<List<MessageInfo>> GetChannelMessagesAsync(int channelId, int limit = 100)
+    {
+        var r = await CallAsync(new { op = "get_channel_messages", token = Token, channel = channelId, limit });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось получить сообщения");
+        var msgs = new List<MessageInfo>();
+        foreach (var m in r.Data.GetProperty("messages").EnumerateArray())
+        {
+            msgs.Add(new MessageInfo
+            {
+                Id = m.GetProperty("Id").GetInt32(),
+                SenderId = m.GetProperty("SenderId").GetInt32(),
+                SenderName = m.GetProperty("Sender").GetString() ?? "",
+                SenderColor = m.GetProperty("SenderColor").GetString() ?? "#5865f2",
+                Text = m.GetProperty("Text").GetString() ?? "",
+                SentAt = m.GetProperty("Sent").GetDateTime()
+            });
+        }
+        return msgs;
     }
 
     private async Task<ApiResult> CallAsync(object payload)
