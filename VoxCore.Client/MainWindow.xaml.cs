@@ -681,14 +681,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await _api.SendChannelMessageAsync(_currentChannel.Id, text);
-            _channelMessages.Add(new ChatMessage
-            {
-                SenderName = _user.Name,
-                SenderColor = _user.Color,
-                TimeText = DateTime.Now.ToString("HH:mm"),
-                Text = text
-            });
-            ChannelChatList.ScrollIntoView(_channelMessages[^1]);
+            await LoadChannelChatAsync();
         }
         catch (ApiException ex)
         {
@@ -787,14 +780,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await _api.SendMessageAsync(_currentDmFriend.Id, text);
-            _dmMessages.Add(new ChatMessage
-            {
-                SenderName = _user.Name,
-                SenderColor = _user.Color,
-                TimeText = DateTime.Now.ToString("HH:mm"),
-                Text = text
-            });
-            DmChatList.ScrollIntoView(_dmMessages[^1]);
+            await LoadDmChatAsync();
         }
         catch (ApiException ex)
         {
