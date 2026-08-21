@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using SIPSorcery.Net;
 using VoxCore.Server;
 
 const ushort VoicePort = 9987;
@@ -13,15 +14,21 @@ var dataDir = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory,
 var store = new Store(dataDir);
 var rooms = new ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>>();
 
+// WebRTC signaling: roomId -> (userId -> peerConnection)
+var webrtcRooms = new ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>>();
+// Pending offers: offerId -> (fromUserId, roomId, sdp)
+var pendingOffers = new ConcurrentDictionary<string, (int UserId, string RoomId, string Sdp)>();
+
 using var voiceUdp = new UdpClient(new IPEndPoint(IPAddress.Any, VoicePort));
 var apiTcp = new TcpListener(IPAddress.Any, ApiPort);
 apiTcp.Start();
 
 Console.WriteLine($"VoxCore Server: voice UDP {VoicePort}, API TCP {ApiPort}, data={dataDir}");
+Console.WriteLine("WebRTC signaling enabled.");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 _ = CleanupLoopAsync(voiceUdp, rooms);
-_ = AcceptApiClientsAsync(apiTcp, store, rooms);
+_ = AcceptApiClientsAsync(apiTcp, store, rooms, webrtcRooms);
 
 while (true)
 {
@@ -38,20 +45,20 @@ while (true)
     }
 }
 
-static async Task AcceptApiClientsAsync(TcpListener listener, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms)
+static async Task AcceptApiClientsAsync(TcpListener listener, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
 {
     while (true)
     {
         try
         {
             var client = await listener.AcceptTcpClientAsync();
-            _ = HandleApiClientAsync(client, store, rooms);
+            _ = HandleApiClientAsync(client, store, rooms, webrtcRooms);
         }
         catch { await Task.Delay(10); }
     }
 }
 
-static async Task HandleApiClientAsync(TcpClient client, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms)
+static async Task HandleApiClientAsync(TcpClient client, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
 {
     try
     {
@@ -64,7 +71,7 @@ static async Task HandleApiClientAsync(TcpClient client, Store store, Concurrent
             {
                 var line = await reader.ReadLineAsync();
                 if (line is null) break;
-                var response = ProcessApi(line, store, rooms);
+                var response = ProcessApi(line, store, rooms, webrtcRooms);
                 await writer.WriteLineAsync(response);
             }
         }
@@ -72,7 +79,7 @@ static async Task HandleApiClientAsync(TcpClient client, Store store, Concurrent
     catch { }
 }
 
-static string ProcessApi(string line, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms)
+static string ProcessApi(string line, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
 {
     JsonElement req;
     try { req = JsonDocument.Parse(line).RootElement; }
@@ -104,6 +111,11 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "unread_count" => user is null ? Error("unauthorized") : UnreadCount(store, user.Id),
         "send_channel_message" => user is null ? Error("unauthorized") : SendChannelMessage(req, store, user.Id),
         "get_channel_messages" => user is null ? Error("unauthorized") : GetChannelMessages(req, store, user.Id),
+        "webrtc_join" => user is null ? Error("unauthorized") : WebRTCJoin(req, store, user, webrtcRooms),
+        "webrtc_leave" => user is null ? Error("unauthorized") : WebRTCLeave(req, store, user.Id, webrtcRooms),
+        "webrtc_offer" => user is null ? Error("unauthorized") : WebRTCOffer(req, store, user, webrtcRooms),
+        "webrtc_answer" => user is null ? Error("unauthorized") : WebRTCAnswer(req, store, user.Id, webrtcRooms),
+        "webrtc_ice" => user is null ? Error("unauthorized") : WebRTCIce(req, store, user.Id, webrtcRooms),
         _ => Error("unknown op")
     };
 }
@@ -425,6 +437,129 @@ static async Task BroadcastMembers(UdpClient udp, IPEndPoint from, string roomNa
     }
     foreach (var m in list)
         await udp.SendAsync(buf, buf.Length, m.Key);
+}
+
+// ---------- WebRTC Signaling ----------
+
+static string WebRTCJoin(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    if (!req.TryGetProperty("channel", out var chEl) || !chEl.TryGetInt32(out var channelId)) return Error("bad channel");
+    var channel = store.Channels.FirstOrDefault(c => c.Id == channelId);
+    if (channel is null) return Error("канал не найден");
+    var roomId = channel.Name;
+    var room = webrtcRooms.GetOrAdd(roomId, _ => new ConcurrentDictionary<int, RTCPeerConnection>());
+    if (room.ContainsKey(user.Id)) return Error("уже в комнате");
+
+    var pc = CreatePeerConnection(roomId, user, webrtcRooms);
+    room[user.Id] = pc;
+    var peers = room.Keys.Where(id => id != user.Id).ToList();
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC JOIN  room={roomId} user={user.Name} peers={peers.Count}");
+    return Ok(new { peers, roomId });
+}
+
+static string WebRTCLeave(JsonElement req, Store store, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    var roomId = GetString(req, "room") ?? "";
+    if (!webrtcRooms.TryGetValue(roomId, out var room)) return Error("комната не найдена");
+    if (room.TryRemove(userId, out var pc))
+    {
+        pc.Close("left");
+        pc.Dispose();
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC LEAVE room={roomId} userId={userId}");
+        if (room.IsEmpty) webrtcRooms.TryRemove(roomId, out _);
+    }
+    return Ok(new { });
+}
+
+static string WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    if (!req.TryGetProperty("sdp", out var sdpEl)) return Error("bad sdp");
+    var sdp = sdpEl.GetString() ?? "";
+    var roomId = GetString(req, "room") ?? "";
+    if (!webrtcRooms.TryGetValue(roomId, out var room)) return Error("комната не найдена");
+    if (!room.TryGetValue(user.Id, out var pc)) return Error("не в комнате");
+
+    var offer = new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp };
+    var result = pc.setRemoteDescription(offer);
+    if (result != SetDescriptionResultEnum.OK) return Error($"setRemoteDescription failed: {result}");
+
+    var answer = pc.createAnswer(null);
+    pc.setLocalDescription(answer).Wait();
+
+    var peers = room.Keys.Where(id => id != user.Id).ToList();
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC OFFER  room={roomId} user={user.Name} -> {peers.Count} peers");
+    return Ok(new { sdp = pc.localDescription.sdp, peers });
+}
+
+static string WebRTCAnswer(JsonElement req, Store store, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    if (!req.TryGetProperty("sdp", out var sdpEl)) return Error("bad sdp");
+    var sdp = sdpEl.GetString() ?? "";
+    var roomId = GetString(req, "room") ?? "";
+    if (!webrtcRooms.TryGetValue(roomId, out var room)) return Error("комната не найдена");
+    if (!room.TryGetValue(userId, out var pc)) return Error("не в комнате");
+
+    var answer = new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp };
+    var result = pc.setRemoteDescription(answer);
+    if (result != SetDescriptionResultEnum.OK) return Error($"setRemoteDescription failed: {result}");
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC ANSWER userId={userId}");
+    return Ok(new { });
+}
+
+static string WebRTCIce(JsonElement req, Store store, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    var roomId = GetString(req, "room") ?? "";
+    if (!webrtcRooms.TryGetValue(roomId, out var room)) return Error("комната не найдена");
+    if (!room.TryGetValue(userId, out var pc)) return Error("не в комнате");
+
+    if (req.TryGetProperty("candidate", out var candEl))
+    {
+        var candidate = candEl.GetString() ?? "";
+        var iceInit = new RTCIceCandidateInit { candidate = candidate };
+        pc.addIceCandidate(iceInit);
+    }
+    return Ok(new { });
+}
+
+static RTCPeerConnection CreatePeerConnection(string roomId, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    var config = new RTCConfiguration
+    {
+        iceServers = new List<RTCIceServer>
+        {
+            new RTCIceServer { urls = "stun:stun.l.google.com:19302" }
+        }
+    };
+    var pc = new RTCPeerConnection(config);
+
+    pc.OnRtpPacketReceived += (ep, media, rtpPkt) =>
+    {
+        if (webrtcRooms.TryGetValue(roomId, out var room))
+        {
+            foreach (var peer in room)
+            {
+                if (peer.Key != user.Id && peer.Value != null)
+                {
+                    try
+                    {
+                        peer.Value.SendRtpRaw(media, rtpPkt.Payload, rtpPkt.Header.Timestamp, rtpPkt.Header.MarkerBit, rtpPkt.Header.PayloadType);
+                    }
+                    catch { }
+                }
+            }
+        }
+    };
+
+    pc.onconnectionstatechange += (state) =>
+    {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WebRTC state userId={user.Name}: {state}");
+        if (state == RTCPeerConnectionState.failed)
+        {
+            pc.Close("ice failure");
+        }
+    };
+
+    return pc;
 }
 
 public sealed class Member
