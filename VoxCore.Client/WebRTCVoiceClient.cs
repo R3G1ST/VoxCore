@@ -32,6 +32,16 @@ public sealed class WebRTCVoiceClient : IDisposable
     public bool MicMuted { get; set; }
     public bool PlaybackMuted { get; set; }
     public double MicGain { get; set; } = 1.0;
+    public int Volume
+    {
+        get => _volume;
+        set
+        {
+            _volume = value;
+            if (_playback != null) _playback.Volume = Math.Clamp(value / 100f, 0f, 1f);
+        }
+    }
+    private int _volume = 80;
 
     public event Action<string>? StatusChanged;
     public event Action<string>? SpeakerStarted;
@@ -68,7 +78,19 @@ public sealed class WebRTCVoiceClient : IDisposable
         {
             iceServers = new List<RTCIceServer>
             {
-                new RTCIceServer { urls = "stun:stun.l.google.com:19302" }
+                new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
+                new RTCIceServer
+                {
+                    urls = "turn:194.31.204.5:3478",
+                    username = "voxcore",
+                    credential = "voxcore123"
+                },
+                new RTCIceServer
+                {
+                    urls = "turn:194.31.204.5:3478?transport=tcp",
+                    username = "voxcore",
+                    credential = "voxcore123"
+                }
             }
         };
         _pc = new RTCPeerConnection(config);
@@ -120,7 +142,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         _capture.DataAvailable += OnCaptureDataAvailable;
 
         // Setup playback
-        _playback = new WaveOutEvent();
+        _playback = new WaveOutEvent { Volume = Math.Clamp(_volume / 100f, 0f, 1f) };
         _playbackBuffer = new BufferedWaveProvider(new WaveFormat(SampleRate, 16, Channels))
         {
             BufferDuration = TimeSpan.FromMilliseconds(200),

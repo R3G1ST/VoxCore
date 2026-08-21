@@ -38,6 +38,20 @@
                 <ToggleSwitch x:Name="NsToggle" OnContent="вкл" OffContent="выкл" />
             </StackPanel>
 
+            <StackPanel Spacing="8">
+                <TextBlock Text="ГРОМКОСТЬ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" StepFrequency="5" />
+                    <TextBlock x:Name="VolumeText" Grid.Column="1" MinWidth="44" Text="80%"
+                               FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1"
+                               VerticalAlignment="Center" HorizontalAlignment="Right" />
+                </Grid>
+            </StackPanel>
+
             <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
                 <StackPanel Spacing="10">
                     <TextBlock Text="ТЕСТ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />

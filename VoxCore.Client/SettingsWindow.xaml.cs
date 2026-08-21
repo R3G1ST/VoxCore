@@ -9,14 +9,16 @@ public sealed partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly VoiceClient _voice;
+    private readonly WebRTCVoiceClient? _webrtc;
     private readonly MicLevelMeter _meter = new();
     private bool _testing;
     private UpdateInfo? _update;
 
-    public SettingsWindow(AppSettings settings, VoiceClient voice)
+    public SettingsWindow(AppSettings settings, VoiceClient voice, WebRTCVoiceClient? webrtc = null)
     {
         _settings = settings;
         _voice = voice;
+        _webrtc = webrtc;
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(520, 640));
         AppWindow.Title = "VoxCore — настройки";
@@ -30,6 +32,15 @@ public sealed partial class SettingsWindow : Window
         GainText.Text = $"{settings.MicGain:0}%";
         NsToggle.IsOn = settings.NoiseSuppression;
         LoopbackCheck.IsChecked = false;
+
+        VolumeSlider.Value = 80;
+        VolumeText.Text = "80%";
+        VolumeSlider.ValueChanged += (_, e) =>
+        {
+            VolumeText.Text = $"{e.NewValue:0}%";
+            _voice.Volume = (int)e.NewValue;
+            _webrtc.Volume = (int)e.NewValue;
+        };
 
         GainSlider.ValueChanged += (_, e) => GainText.Text = $"{e.NewValue:0}%";
         _meter.LevelChanged += level =>

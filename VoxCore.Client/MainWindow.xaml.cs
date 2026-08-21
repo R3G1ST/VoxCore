@@ -284,42 +284,56 @@ public sealed partial class MainWindow : Window
         }
 
         LeaveChannel();
+        bool connected = false;
 
+        // Try WebRTC first (with 5s timeout)
         if (_useWebRtc && _webrtc != null)
         {
             try
             {
-                await _webrtc.ConnectAsync(ch.Id);
-                _currentChannel = ch;
-                ChannelNameText.Text = ch.Name;
-                ChannelStatusText.Text = "WebRTC подключен";
-                LeaveChannelBtn.Visibility = Visibility.Visible;
-                StatusText.Text = $"WebRTC: {ch.Name}";
-                VoiceStatusPanel.Visibility = Visibility.Collapsed;
-                ChannelChatPanel.Visibility = Visibility.Visible;
-                _lastChannelMsgId = 0;
-                _channelMessages.Clear();
-                CloseDmPanel();
-                _chatTimer.Start();
-                _ = LoadChannelChatAsync();
-                RenderChannels();
-                return;
+                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var connectTask = _webrtc.ConnectAsync(ch.Id);
+                await Task.WhenAny(connectTask, Task.Delay(5000, cts.Token));
+                if (connectTask.IsCompleted && !connectTask.IsFaulted)
+                {
+                    await connectTask;
+                    connected = true;
+                }
+                else
+                {
+                    StatusText.Text = "WebRTC timeout, fallback to UDP";
+                    _webrtc.Disconnect();
+                }
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
-                _useWebRtc = false;
+                _webrtc.Disconnect();
             }
         }
 
-        // Fallback to UDP
-        var host = _settings.Server.Split(':')[0];
-        _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
+        // Fallback to UDP if WebRTC didn't connect
+        if (!connected)
+        {
+            try
+            {
+                var host = _settings.Server.Split(':')[0];
+                _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
+                connected = true;
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"UDP failed: {ex.Message}";
+                await ShowErrorAsync("не удалось подключиться к голосовому каналу");
+                return;
+            }
+        }
+
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
-        ChannelStatusText.Text = "в голосовом канале";
+        ChannelStatusText.Text = connected ? (connected && _webrtc?.IsConnected == true ? "WebRTC подключен" : "UDP подключен") : "не подключен";
         LeaveChannelBtn.Visibility = Visibility.Visible;
-        StatusText.Text = $"подключено к {ch.Name}";
+        StatusText.Text = connected ? $"{(_webrtc?.IsConnected == true ? "WebRTC" : "UDP")}: {ch.Name}" : "ошибка";
         VoiceStatusPanel.Visibility = Visibility.Collapsed;
         ChannelChatPanel.Visibility = Visibility.Visible;
         _lastChannelMsgId = 0;
@@ -637,24 +651,28 @@ public sealed partial class MainWindow : Window
     private void MicMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = true;
+        _webrtc.MicMuted = true;
         MicMuteBtn.Content = "🎙️🚫";
     }
 
     private void MicMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = false;
+        _webrtc.MicMuted = false;
         MicMuteBtn.Content = "🎙️";
     }
 
     private void HeadMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = true;
+        _webrtc.PlaybackMuted = true;
         HeadMuteBtn.Content = "🔇";
     }
 
     private void HeadMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = false;
+        _webrtc.PlaybackMuted = false;
         HeadMuteBtn.Content = "🔊";
     }
 
@@ -662,6 +680,8 @@ public sealed partial class MainWindow : Window
     {
         _voice.MicMuted = true;
         _voice.PlaybackMuted = true;
+        _webrtc.MicMuted = true;
+        _webrtc.PlaybackMuted = true;
         MicMuteBtn.IsChecked = true;
         HeadMuteBtn.IsChecked = true;
         DeafenBtn.Content = "🔇✅";
@@ -671,6 +691,8 @@ public sealed partial class MainWindow : Window
     {
         _voice.MicMuted = false;
         _voice.PlaybackMuted = false;
+        _webrtc.MicMuted = false;
+        _webrtc.PlaybackMuted = false;
         MicMuteBtn.IsChecked = false;
         HeadMuteBtn.IsChecked = false;
         DeafenBtn.Content = "🔇";
@@ -678,7 +700,7 @@ public sealed partial class MainWindow : Window
 
     private void SettingsBtn_Click(object sender, RoutedEventArgs e)
     {
-        var settingsWin = new SettingsWindow(_settings, _voice);
+        var settingsWin = new SettingsWindow(_settings, _voice, _webrtc);
         settingsWin.Activate();
     }
 

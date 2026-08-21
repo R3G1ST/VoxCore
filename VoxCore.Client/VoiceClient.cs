@@ -55,6 +55,16 @@ public sealed class VoiceClient : IDisposable
     public bool PlaybackMuted { get; set; }
     public int InputDevice { get; set; }
     public double MicGain { get; set; } = 1.0;
+    public int Volume
+    {
+        get => _volume;
+        set
+        {
+            _volume = value;
+            if (_playback != null) _playback.Volume = Math.Clamp(value / 100f, 0f, 1f);
+        }
+    }
+    private int _volume = 80;
     private volatile bool _noiseSuppression = true;
 
     public bool NoiseSuppression
