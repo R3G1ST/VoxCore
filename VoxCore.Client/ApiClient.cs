@@ -272,6 +272,25 @@ public sealed class ApiClient
         if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить ICE candidate");
     }
 
+    public async Task SendScreenFrameAsync(string roomId, byte[] jpegData)
+    {
+        var b64 = Convert.ToBase64String(jpegData);
+        var r = await CallAsync(new { op = "screen_frame", token = Token, room = roomId, frame = b64 });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить кадр");
+    }
+
+    public async Task ScreenShareStartAsync(int channelId)
+    {
+        var r = await CallAsync(new { op = "screen_start", token = Token, channel = channelId });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось начать демонстрацию");
+    }
+
+    public async Task ScreenShareStopAsync()
+    {
+        var r = await CallAsync(new { op = "screen_stop", token = Token });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось остановить демонстрацию");
+    }
+
     private async Task<ApiResult> CallAsync(object payload)
     {
         using var client = new TcpClient();

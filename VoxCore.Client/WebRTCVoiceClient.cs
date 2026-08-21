@@ -29,6 +29,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     private int _channelId;
 
     public bool IsConnected => _pc?.connectionState == RTCPeerConnectionState.connected;
+    public string RoomId => _roomId;
     public bool MicMuted { get; set; }
     public bool PlaybackMuted { get; set; }
     public double MicGain { get; set; } = 1.0;

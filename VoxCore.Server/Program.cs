@@ -116,6 +116,9 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "webrtc_offer" => user is null ? Error("unauthorized") : WebRTCOffer(req, store, user, webrtcRooms),
         "webrtc_answer" => user is null ? Error("unauthorized") : WebRTCAnswer(req, store, user.Id, webrtcRooms),
         "webrtc_ice" => user is null ? Error("unauthorized") : WebRTCIce(req, store, user.Id, webrtcRooms),
+        "screen_start" => user is null ? Error("unauthorized") : ScreenStart(req, store, user.Id),
+        "screen_stop" => user is null ? Error("unauthorized") : ScreenStop(user.Id),
+        "screen_frame" => user is null ? Error("unauthorized") : ScreenFrame(req, user.Id, webrtcRooms),
         _ => Error("unknown op")
     };
 }
@@ -560,6 +563,40 @@ static RTCPeerConnection CreatePeerConnection(string roomId, User user, Concurre
     };
 
     return pc;
+}
+
+static string ScreenStart(JsonElement req, Store store, int userId)
+{
+    var channelId = req.TryGetProperty("channel", out var ch) ? ch.GetInt32() : 0;
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Screen share started by userId={userId} in channel {channelId}");
+    return JsonSerializer.Serialize(new { ok = true });
+}
+
+static string ScreenStop(int userId)
+{
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Screen share stopped by userId={userId}");
+    return JsonSerializer.Serialize(new { ok = true });
+}
+
+static string ScreenFrame(JsonElement req, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    var room = req.TryGetProperty("room", out var r) ? r.GetString() ?? "" : "";
+    var frameB64 = req.TryGetProperty("frame", out var f) ? f.GetString() ?? "" : "";
+
+    if (frameB64.Length == 0) return Error("пустой кадр");
+
+    if (webrtcRooms.TryGetValue(room, out var peers))
+    {
+        foreach (var peer in peers)
+        {
+            if (peer.Key != userId)
+            {
+                ScreenFrameStore.StoreFrame(peer.Key, frameB64);
+            }
+        }
+    }
+
+    return JsonSerializer.Serialize(new { ok = true });
 }
 
 public sealed class Member

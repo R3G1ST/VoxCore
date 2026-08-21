@@ -22,7 +22,6 @@ public sealed partial class MainWindow : Window
     private readonly AppSettings _settings;
     private readonly VoiceClient _voice = new();
     private readonly WebRTCVoiceClient? _webrtc;
-    private readonly ScreenShareService _screenShare = new();
     private readonly ObservableCollection<MemberItem> _members = [];
     private readonly ObservableCollection<ChatMessage> _channelMessages = [];
     private readonly ObservableCollection<ChatMessage> _dmMessages = [];
@@ -82,9 +81,6 @@ public sealed partial class MainWindow : Window
         _voice.StatusChanged += OnStatusChanged;
         _voice.SpeakerStarted += OnSpeakerStarted;
         _voice.SpeakerStopped += OnSpeakerStopped;
-
-        _screenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
-        _screenShare.FrameCaptured += (frame) => { /* WebRTC sends frame */ };
 
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _refreshTimer.Tick += async (_, _) =>
@@ -355,7 +351,9 @@ public sealed partial class MainWindow : Window
     {
         _voice.Disconnect();
         _webrtc?.Disconnect();
-        _screenShare.StopCapture();
+        _activeScreenShare?.StopCapture();
+        _activeScreenShare?.Dispose();
+        _activeScreenShare = null;
         _currentChannel = null;
         ChannelNameText.Text = "не в канале";
         ChannelStatusText.Text = "выбери канал слева";
@@ -662,24 +660,58 @@ public sealed partial class MainWindow : Window
         HeadMuteBtn.Content = "🔊";
     }
 
+    private ScreenShareService? _activeScreenShare;
+
     private async void ScreenShareBtn_Checked(object sender, RoutedEventArgs e)
     {
+        if (_currentChannel == null)
+        {
+            ScreenShareBtn.IsChecked = false;
+            return;
+        }
+
         try
         {
-            await _screenShare.StartCaptureAsync();
+            var picker = new ScreenSharePickerWindow();
+            picker.Activate();
+            await Task.Delay(500);
+
+            // Wait for picker to close
+            while (picker.Visible) await Task.Delay(100);
+
+            if (!picker.Confirmed)
+            {
+                ScreenShareBtn.IsChecked = false;
+                return;
+            }
+
+            var roomId = _webrtc?.RoomId ?? _currentChannel.Id.ToString();
+            _activeScreenShare = new ScreenShareService(_api, roomId);
+
+            if (picker.SelectedDisplay != null)
+                _activeScreenShare.SetTargetDisplay(picker.SelectedDisplay.Index);
+            else if (picker.SelectedWindow != null)
+                _activeScreenShare.SetTargetWindow(picker.SelectedWindow.Handle);
+
+            await _api.ScreenShareStartAsync(_currentChannel.Id);
+            _activeScreenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
+            _activeScreenShare.StartCapture();
             ScreenShareDot.Visibility = Visibility.Visible;
             StatusText.Text = "демонстрация экрана активна";
         }
         catch (Exception ex)
         {
             ScreenShareBtn.IsChecked = false;
-            StatusText.Text = $"ошибка демонстрации: {ex.Message}";
+            StatusText.Text = $"ошибка: {ex.Message}";
         }
     }
 
     private void ScreenShareBtn_Unchecked(object sender, RoutedEventArgs e)
     {
-        _screenShare.StopCapture();
+        _activeScreenShare?.StopCapture();
+        _activeScreenShare?.Dispose();
+        _activeScreenShare = null;
+        _ = _api.ScreenShareStopAsync();
         ScreenShareDot.Visibility = Visibility.Collapsed;
         StatusText.Text = "демонстрация остановлена";
     }

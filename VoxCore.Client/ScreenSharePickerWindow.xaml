@@ -1,0 +1,80 @@
+<Window
+    x:Class="VoxCore.Client.ScreenSharePickerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="#313338" Padding="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="ДЕМОНСТРАЦИЯ ЭКРАНА" FontFamily="Cascadia Code" FontSize="13"
+                   FontWeight="SemiBold" Foreground="#dbdee1" Margin="0,0,0,12" />
+
+        <TextBlock Grid.Row="1" Text="ДИСПЛЕИ" FontFamily="Cascadia Code" FontSize="11"
+                   Foreground="#949ba4" Margin="0,0,0,6" />
+
+        <ListView x:Name="DisplaysList" Grid.Row="2" Background="#2b2d31" BorderThickness="0"
+                  SelectionMode="Single" Margin="0,0,0,12" SelectionChanged="Display_Click">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="12,10" Background="#313338" CornerRadius="8" Margin="0,2">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Width="32" Height="32" CornerRadius="6" Background="#5865f2">
+                                <TextBlock Text="🖥️" FontSize="16" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code" FontSize="12"
+                                           Foreground="#dbdee1" />
+                                <TextBlock Text="нажми чтобы выбрать" FontFamily="Cascadia Code" FontSize="10"
+                                           Foreground="#949ba4" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <TextBlock Grid.Row="3" Text="ОКНА" FontFamily="Cascadia Code" FontSize="11"
+                   Foreground="#949ba4" Margin="0,0,0,6" />
+
+        <ListView x:Name="WindowsList" Grid.Row="4" Background="#2b2d31" BorderThickness="0"
+                  SelectionMode="Single" MaxHeight="200" SelectionChanged="Window_Click">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="12,10" Background="#313338" CornerRadius="8" Margin="0,2">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Width="32" Height="32" CornerRadius="6" Background="#3ba55d">
+                                <TextBlock Text="📋" FontSize="16" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontFamily="Cascadia Code" FontSize="12"
+                                           Foreground="#dbdee1" TextTrimming="CharacterEllipsis" MaxWidth="280" />
+                                <TextBlock FontFamily="Cascadia Code" FontSize="10" Foreground="#949ba4">
+                                    <Run Text="{Binding Width}" />x<Run Text="{Binding Height}" />
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <TextBlock x:Name="InfoText" Grid.Row="5" Text="" FontFamily="Cascadia Code" FontSize="11"
+                   Foreground="#faa61a" VerticalAlignment="Center" />
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="ОТМЕНА" Style="{ThemeResource VcSmallButton}" Background="#3f4248"
+                    Click="CancelBtn_Click" />
+            <Button Content="ДЕМОНСТРИРОВАТЬ" Style="{ThemeResource VcSmallButton}" Background="#3ba55d"
+                    Click="ConfirmBtn_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

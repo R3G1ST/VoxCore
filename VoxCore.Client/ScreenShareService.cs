@@ -7,91 +7,80 @@ namespace VoxCore.Client;
 
 public sealed class ScreenShareService : IDisposable
 {
-    private const int TargetWidth = 1920;
-    private const int TargetHeight = 1080;
-    private const int TargetFps = 60;
+    private const int TargetFps = 15;
+    private const int JpegQuality = 70;
 
     private CancellationTokenSource? _cts;
     private volatile bool _isCapturing;
-    private readonly object _lock = new();
-    private byte[] _lastFrame = [];
-    private readonly Stopwatch _fpsSw = new();
-    private int _frameCount;
     private Thread? _captureThread;
+    private IntPtr _targetHwnd = IntPtr.Zero;
+    private bool _captureFullScreen;
+    private int _screenIndex;
+    private readonly ApiClient _api;
+    private readonly string _roomId;
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetDesktopWindow();
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int w, int h);
+    [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+    [DllImport("gdi32.dll")] static extern bool BitBlt(IntPtr d, int dx, int dy, int dw, int dh, IntPtr s, int sx, int sy, int rop);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr o);
+    [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int nIndex);
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetDC(IntPtr hWnd);
+    [StructLayout(LayoutKind.Sequential)]
+    struct RECT { public int Left, Top, Right, Bottom; }
 
-    [DllImport("user32.dll")]
-    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
-
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
-        IntPtr hdcSrc, int xSrc, int ySrc, int rop);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteObject(IntPtr hObject);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteDC(IntPtr hdc);
-
-    [DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int nIndex);
-
-    private const int SM_CXSCREEN = 0;
-    private const int SM_CYSCREEN = 1;
-    private const int SRCCOPY = 0x00CC0020;
+    const int SRCCOPY = 0x00CC0020;
+    const int SM_XSCREEN = 76;
+    const int SM_YSCREEN = 77;
+    const int SM_CXSCREEN = 0;
+    const int SM_CYSCREEN = 1;
 
     public bool IsCapturing => _isCapturing;
-    public int ActualFps { get; private set; }
-    public event Action<byte[]>? FrameCaptured;
     public event Action<string>? StatusChanged;
+    public event Action<byte[]>? FrameSent;
 
-    public async Task StartCaptureAsync()
+    public ScreenShareService(ApiClient api, string roomId)
+    {
+        _api = api;
+        _roomId = roomId;
+    }
+
+    public void SetTargetDisplay(int index)
+    {
+        _captureFullScreen = true;
+        _screenIndex = index;
+        _targetHwnd = IntPtr.Zero;
+    }
+
+    public void SetTargetWindow(IntPtr hwnd)
+    {
+        _captureFullScreen = false;
+        _targetHwnd = hwnd;
+    }
+
+    public void StartCapture()
     {
         if (_isCapturing) return;
 
-        try
+        _cts = new CancellationTokenSource();
+        _isCapturing = true;
+        _captureThread = new Thread(() => CaptureLoop(_cts.Token))
         {
-            _cts = new CancellationTokenSource();
-            _isCapturing = true;
-            _fpsSw.Restart();
-            _frameCount = 0;
-
-            _captureThread = new Thread(() => CaptureLoop(_cts.Token))
-            {
-                IsBackground = true,
-                Priority = ThreadPriority.Highest
-            };
-            _captureThread.Start();
-
-            StatusChanged?.Invoke("демонстрация экрана активна");
-            await Task.CompletedTask;
-        }
-        catch (Exception ex)
-        {
-            StatusChanged?.Invoke($"ошибка: {ex.Message}");
-            StopCapture();
-        }
+            IsBackground = true,
+            Priority = ThreadPriority.Highest
+        };
+        _captureThread.Start();
+        StatusChanged?.Invoke("демонстрация экрана активна");
     }
 
     private void CaptureLoop(CancellationToken ct)
     {
-        var frameInterval = TimeSpan.FromMilliseconds(1000.0 / TargetFps);
-        int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-        int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+        var interval = TimeSpan.FromMilliseconds(1000.0 / TargetFps);
 
         while (!ct.IsCancellationRequested && _isCapturing)
         {
@@ -99,78 +88,118 @@ public sealed class ScreenShareService : IDisposable
 
             try
             {
-                var frame = CaptureScreen(screenWidth, screenHeight);
-                if (frame.Length > 0)
+                byte[]? jpeg = null;
+
+                if (_captureFullScreen)
                 {
-                    lock (_lock)
-                    {
-                        _lastFrame = frame;
-                    }
-                    FrameCaptured?.Invoke(frame);
+                    jpeg = CaptureDisplay(_screenIndex);
+                }
+                else if (_targetHwnd != IntPtr.Zero && IsWindow(_targetHwnd))
+                {
+                    jpeg = CaptureWindow(_targetHwnd);
                 }
 
-                _frameCount++;
-                if (_fpsSw.ElapsedMilliseconds >= 1000)
+                if (jpeg != null && jpeg.Length > 0)
                 {
-                    ActualFps = (int)(_frameCount * 1000.0 / _fpsSw.ElapsedMilliseconds);
-                    _frameCount = 0;
-                    _fpsSw.Restart();
+                    _ = SendFrameAsync(jpeg);
+                    FrameSent?.Invoke(jpeg);
                 }
             }
             catch { }
 
-            var elapsed = sw.Elapsed;
-            var sleepTime = frameInterval - elapsed;
-            if (sleepTime > TimeSpan.Zero)
-                Thread.Sleep(sleepTime);
+            var sleep = interval - sw.Elapsed;
+            if (sleep > TimeSpan.Zero)
+                Thread.Sleep(sleep);
         }
     }
 
-    private byte[] CaptureScreen(int screenW, int screenH)
+    private byte[]? CaptureDisplay(int index)
     {
-        IntPtr hdcScreen = GetDC(IntPtr.Zero);
-        IntPtr hdcMem = CreateCompatibleDC(hdcScreen);
-        IntPtr hBitmap = CreateCompatibleBitmap(hdcScreen, TargetWidth, TargetHeight);
-        IntPtr hOld = SelectObject(hdcMem, hBitmap);
+        try
+        {
+            var screens = System.Windows.Forms.Screen.AllScreens;
+            if (index >= screens.Length) index = 0;
+            var screen = screens[index];
+            var bounds = screen.Bounds;
 
-        // StretchBlt for scaling
-        int rop = 0x00CC0020; // SRCCOPY
-        BitBlt(hdcMem, 0, 0, TargetWidth, TargetHeight, hdcScreen, 0, 0, rop);
+            IntPtr hdcScreen = GetDC(IntPtr.Zero);
+            IntPtr hdcMem = CreateCompatibleDC(hdcScreen);
+            IntPtr hBitmap = CreateCompatibleBitmap(hdcScreen, bounds.Width, bounds.Height);
+            IntPtr hOld = SelectObject(hdcMem, hBitmap);
 
-        SelectObject(hdcMem, hOld);
+            BitBlt(hdcMem, 0, 0, bounds.Width, bounds.Height, hdcScreen, bounds.X, bounds.Y, SRCCOPY);
+            SelectObject(hdcMem, hOld);
 
-        // Convert to byte array
-        var bmp = Image.FromHbitmap(hBitmap);
-        var ms = new MemoryStream();
-        bmp.Save(ms, ImageFormat.Jpeg);
-        var bytes = ms.ToArray();
+            var bmp = Image.FromHbitmap(hBitmap);
+            var bytes = ImageToJpeg(bmp, JpegQuality);
+            bmp.Dispose();
+            DeleteObject(hBitmap);
+            DeleteDC(hdcMem);
+            ReleaseDC(IntPtr.Zero, hdcScreen);
 
-        bmp.Dispose();
-        DeleteObject(hBitmap);
-        DeleteDC(hdcMem);
-        ReleaseDC(IntPtr.Zero, hdcScreen);
-
-        return bytes;
+            return bytes;
+        }
+        catch { return null; }
     }
 
-    [DllImport("gdi32.dll")]
-    private static extern bool StretchBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
-        IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, int rop);
+    private byte[]? CaptureWindow(IntPtr hwnd)
+    {
+        try
+        {
+            GetWindowRect(hwnd, out RECT rect);
+            int w = rect.Right - rect.Left;
+            int h = rect.Bottom - rect.Top;
+            if (w <= 0 || h <= 0) return null;
+
+            IntPtr hdcWindow = GetDC(hwnd);
+            IntPtr hdcMem = CreateCompatibleDC(hdcWindow);
+            IntPtr hBitmap = CreateCompatibleBitmap(hdcWindow, w, h);
+            IntPtr hOld = SelectObject(hdcMem, hBitmap);
+
+            BitBlt(hdcMem, 0, 0, w, h, hdcWindow, 0, 0, SRCCOPY);
+            SelectObject(hdcMem, hOld);
+
+            var bmp = Image.FromHbitmap(hBitmap);
+            var bytes = ImageToJpeg(bmp, JpegQuality);
+            bmp.Dispose();
+            DeleteObject(hBitmap);
+            DeleteDC(hdcMem);
+            ReleaseDC(hwnd, hdcWindow);
+
+            return bytes;
+        }
+        catch { return null; }
+    }
+
+    private static byte[] ImageToJpeg(Image bmp, int quality)
+    {
+        var ms = new MemoryStream();
+
+        var codec = ImageCodecInfo.GetImageEncoders()
+            .First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+
+        var eps = new EncoderParameters(1);
+        eps.Param[0] = new EncoderParameter(Encoder.Quality, (long)quality);
+
+        bmp.Save(ms, codec, eps);
+        return ms.ToArray();
+    }
+
+    private async Task SendFrameAsync(byte[] jpeg)
+    {
+        try
+        {
+            await _api.SendScreenFrameAsync(_roomId, jpeg);
+        }
+        catch { }
+    }
 
     public void StopCapture()
     {
         _isCapturing = false;
         _cts?.Cancel();
-        _captureThread?.Join(1000);
+        _captureThread?.Join(2000);
         StatusChanged?.Invoke("демонстрация экрана остановлена");
-    }
-
-    public byte[] GetLastFrame()
-    {
-        lock (_lock)
-        {
-            return _lastFrame;
-        }
     }
 
     public void Dispose()
