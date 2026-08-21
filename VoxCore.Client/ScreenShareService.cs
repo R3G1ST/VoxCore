@@ -81,6 +81,7 @@ public sealed class ScreenShareService : IDisposable
     private void CaptureLoop(CancellationToken ct)
     {
         var interval = TimeSpan.FromMilliseconds(1000.0 / TargetFps);
+        int frameCount = 0;
 
         while (!ct.IsCancellationRequested && _isCapturing)
         {
@@ -101,16 +102,30 @@ public sealed class ScreenShareService : IDisposable
 
                 if (jpeg != null && jpeg.Length > 0)
                 {
+                    frameCount++;
+                    if (frameCount % 30 == 1)
+                        StatusChanged?.Invoke($"кадр #{frameCount}, {jpeg.Length} байт");
+
                     _ = SendFrameAsync(jpeg);
                     FrameSent?.Invoke(jpeg);
                 }
+                else
+                {
+                    if (frameCount == 0)
+                        StatusChanged?.Invoke("захват вернул пустой кадр");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke($"ошибка захвата: {ex.Message}");
+            }
 
             var sleep = interval - sw.Elapsed;
             if (sleep > TimeSpan.Zero)
                 Thread.Sleep(sleep);
         }
+
+        StatusChanged?.Invoke($"захват остановлен, кадров: {frameCount}");
     }
 
     private byte[]? CaptureDisplay(int index)

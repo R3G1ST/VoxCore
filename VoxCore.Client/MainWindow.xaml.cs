@@ -666,48 +666,56 @@ public sealed partial class MainWindow : Window
     {
         if (_currentChannel == null)
         {
+            StatusText.Text = "не в канале";
             ScreenShareBtn.IsChecked = false;
             return;
         }
 
         try
         {
+            StatusText.Text = "открываю пикер...";
             ScreenSharePickerResult.Reset();
             var picker = new ScreenSharePickerWindow();
             picker.Activate();
 
-            // Wait for picker to close via TaskCompletionSource
             bool confirmed = await ScreenSharePickerWindow.PickerTcs!.Task;
+            StatusText.Text = $"пикер: confirmed={confirmed}, DisplayIndex={ScreenSharePickerResult.DisplayIndex}, Handle={ScreenSharePickerResult.WindowHandle}";
 
-            if (!confirmed || !ScreenSharePickerResult.Confirmed)
+            if (!confirmed || (!ScreenSharePickerResult.Confirmed && ScreenSharePickerResult.DisplayIndex < 0 && ScreenSharePickerResult.WindowHandle == IntPtr.Zero))
             {
+                StatusText.Text = "выбор отменён";
                 ScreenShareBtn.IsChecked = false;
                 return;
             }
 
             var roomId = _webrtc?.RoomId ?? _currentChannel.Id.ToString();
+            StatusText.Text = $"roomId={roomId}, создаю захват...";
+
             _activeScreenShare = new ScreenShareService(_api, roomId);
+            _activeScreenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
 
             if (ScreenSharePickerResult.DisplayIndex >= 0)
             {
                 _activeScreenShare.SetTargetDisplay(ScreenSharePickerResult.DisplayIndex);
-                StatusText.Text = $"демонстрация дисплея {ScreenSharePickerResult.DisplayIndex + 1}";
+                StatusText.Text = $"захват дисплея {ScreenSharePickerResult.DisplayIndex + 1}...";
             }
             else if (ScreenSharePickerResult.WindowHandle != IntPtr.Zero)
             {
                 _activeScreenShare.SetTargetWindow(ScreenSharePickerResult.WindowHandle);
-                StatusText.Text = $"демонстрация окна: {ScreenSharePickerResult.WindowTitle}";
+                StatusText.Text = "захват окна...";
             }
 
+            StatusText.Text = "отправляю screen_start...";
             await _api.ScreenShareStartAsync(_currentChannel.Id);
-            _activeScreenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
+            StatusText.Text = "запускаю захват...";
             _activeScreenShare.StartCapture();
             ScreenShareDot.Visibility = Visibility.Visible;
+            StatusText.Text = "демонстрация активна!";
         }
         catch (Exception ex)
         {
+            StatusText.Text = $"ОШИБКА: {ex.Message}";
             ScreenShareBtn.IsChecked = false;
-            StatusText.Text = $"ошибка: {ex.Message}";
         }
     }
 
