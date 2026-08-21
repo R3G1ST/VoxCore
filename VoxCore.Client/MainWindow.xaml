@@ -384,21 +384,6 @@
                 </Grid>
             </Grid>
 
-            <Border Grid.Row="3" BorderBrush="#1e1f22" BorderThickness="0,1,0,0" Padding="16,10">
-                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
-                    <ToggleButton x:Name="ModeToggle" Content="🎤 АКТИВНЫЙ" MinWidth="120" Height="40"
-                                  IsChecked="True" Checked="ModeToggle_Checked" Unchecked="ModeToggle_Unchecked"
-                                  ToolTipService.ToolTip="режим микрофона: активный / PTT" />
-                    <ToggleButton x:Name="MicMuteBtn" Content="🎙️" MinWidth="48" Height="40"
-                                  Checked="MicMuteBtn_Checked" Unchecked="MicMuteBtn_Unchecked" />
-                    <ToggleButton x:Name="HeadMuteBtn" Content="🔊" MinWidth="48" Height="40"
-                                  Checked="HeadMuteBtn_Checked" Unchecked="HeadMuteBtn_Unchecked" />
-                    <ToggleButton x:Name="DeafenBtn" Content="🔇" MinWidth="48" Height="40"
-                                  Checked="DeafenBtn_Checked" Unchecked="DeafenBtn_Unchecked" />
-                    <Button x:Name="SettingsBtn" Content="⚙️" MinWidth="48" Height="40"
-                            Click="SettingsBtn_Click" />
-                </StackPanel>
-            </Border>
         </Grid>
 
         <!-- ПРАВАЯ ПАНЕЛЬ: участники -->
@@ -444,6 +429,10 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border x:Name="AvatarBorder" Width="36" Height="36" CornerRadius="18" Background="#5865f2">
                     <TextBlock x:Name="AvatarLetter" FontFamily="Cascadia Code" FontWeight="Bold" Foreground="White"
@@ -455,8 +444,23 @@
                     <TextBlock x:Name="UserStatusText" Text="в сети" FontFamily="Cascadia Code" FontSize="10"
                                Foreground="#3ba55d" />
                 </StackPanel>
-                <Button Grid.Column="2" Content="✕" Width="34" Height="34" Padding="0" Background="Transparent"
-                        BorderThickness="0" Foreground="#949ba4" Click="LogoutBtn_Click"
+                <ToggleButton x:Name="MicMuteBtn" Grid.Column="2" Content="🎙️" Width="28" Height="28" Padding="0"
+                              FontSize="12" Margin="2,0,0,0" Background="Transparent" BorderThickness="0"
+                              Checked="MicMuteBtn_Checked" Unchecked="MicMuteBtn_Unchecked"
+                              ToolTipService.ToolTip="микрофон" />
+                <ToggleButton x:Name="HeadMuteBtn" Grid.Column="3" Content="🔊" Width="28" Height="28" Padding="0"
+                              FontSize="12" Margin="2,0,0,0" Background="Transparent" BorderThickness="0"
+                              Checked="HeadMuteBtn_Checked" Unchecked="HeadMuteBtn_Unchecked"
+                              ToolTipService.ToolTip="наушники" />
+                <ToggleButton x:Name="DeafenBtn" Grid.Column="4" Content="🔇" Width="28" Height="28" Padding="0"
+                              FontSize="12" Margin="2,0,0,0" Background="Transparent" BorderThickness="0"
+                              Checked="DeafenBtn_Checked" Unchecked="DeafenBtn_Unchecked"
+                              ToolTipService.ToolTip="deafen" />
+                <Button x:Name="SettingsBtn" Grid.Column="5" Content="⚙️" Width="28" Height="28" Padding="0"
+                        FontSize="12" Margin="2,0,0,0" Background="Transparent" BorderThickness="0"
+                        Click="SettingsBtn_Click" ToolTipService.ToolTip="настройки" />
+                <Button Grid.Column="6" Content="✕" Width="28" Height="28" Padding="0" Background="Transparent"
+                        BorderThickness="0" Foreground="#949ba4" Click="LogoutBtn_Click" Margin="2,0,0,0"
                         ToolTipService.ToolTip="выйти" />
             </Grid>
         </Border>

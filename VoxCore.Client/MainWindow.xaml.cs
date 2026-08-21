@@ -604,14 +604,9 @@ public sealed partial class MainWindow : Window
                 StatusText.Text = "говоришь...";
                 StatusText.Foreground = BrushFromHex("#3ba55d");
             }
-            else if (ModeToggle.IsChecked == true)
-            {
-                StatusText.Text = "микрофон активен — просто говори";
-                StatusText.Foreground = BrushFromHex("#b5bac1");
-            }
             else
             {
-                StatusText.Text = "PTT — зажми пробел";
+                StatusText.Text = "микрофон активен — просто говори";
                 StatusText.Foreground = BrushFromHex("#b5bac1");
             }
         });
@@ -620,26 +615,6 @@ public sealed partial class MainWindow : Window
     private void OnStatusChanged(string status)
     {
         DispatcherQueue.TryEnqueue(() => StatusText.Text = status);
-    }
-
-    // ---------- Режим микрофона ----------
-
-    private void ModeToggle_Checked(object sender, RoutedEventArgs e)
-    {
-        ModeToggle.Content = "🎤 АКТИВНЫЙ";
-        _voice.OpenMic = true;
-        ModeHintText.Text = "микрофон активен — просто говори";
-        if (!_voice.MicMuted)
-            StatusText.Text = "микрофон активен — просто говори";
-    }
-
-    private void ModeToggle_Unchecked(object sender, RoutedEventArgs e)
-    {
-        ModeToggle.Content = "⌨️ PTT";
-        _voice.OpenMic = false;
-        ModeHintText.Text = "PTT — зажми пробел";
-        if (!_voice.MicMuted)
-            StatusText.Text = "PTT — зажми пробел";
     }
 
     // ---------- Кнопки ----------
