@@ -138,6 +138,7 @@ public sealed partial class SettingsWindow : Window
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;
+        _webrtc.NoiseSuppression = NsToggle.IsOn;
         _settings.Save();
         Close();
     }

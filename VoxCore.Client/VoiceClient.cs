@@ -88,11 +88,11 @@ public sealed class VoiceClient : IDisposable
         _udp.Client.SendTimeout = 1000;
 
         _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
-        _encoder.Bitrate = 96000;
+        _encoder.Bitrate = 128000;
         _encoder.Complexity = 10;
-        _encoder.UseDTX = true;
+        _encoder.UseDTX = false;
         _encoder.UseInbandFEC = true;
-        _encoder.PacketLossPercent = 10;
+        _encoder.PacketLossPercent = 5;
 
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
         if (_noiseSuppression) _denoiser = new Denoiser();

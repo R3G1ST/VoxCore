@@ -2,6 +2,7 @@ using System.Net;
 using Concentus;
 using Concentus.Enums;
 using NAudio.Wave;
+using RNNoise.NET;
 using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
 
@@ -21,9 +22,9 @@ public sealed class WebRTCVoiceClient : IDisposable
     private BufferedWaveProvider? _playbackBuffer;
     private IOpusEncoder? _encoder;
     private IOpusDecoder? _decoder;
+    private Denoiser? _denoiser;
+    private readonly float[] _denoiseBuf = new float[FrameSize];
     private CancellationTokenSource _cts = new();
-    private Thread? _encodeThread;
-    private Thread? _receiveThread;
     private volatile bool _running;
     private string _roomId = "";
     private int _channelId;
@@ -33,6 +34,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     public bool MicMuted { get; set; }
     public bool PlaybackMuted { get; set; }
     public double MicGain { get; set; } = 1.0;
+    public bool NoiseSuppression { get; set; } = true;
     public int Volume
     {
         get => _volume;
@@ -55,13 +57,16 @@ public sealed class WebRTCVoiceClient : IDisposable
     {
         _api = api;
         _serverHost = serverHost;
+
         _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
-        _encoder.Bitrate = 96000;
+        _encoder.Bitrate = 128000;
         _encoder.Complexity = 10;
-        _encoder.UseDTX = true;
+        _encoder.UseDTX = false;
         _encoder.UseInbandFEC = true;
-        _encoder.PacketLossPercent = 10;
+        _encoder.PacketLossPercent = 5;
+
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
+        _denoiser = new Denoiser();
     }
 
     public async Task ConnectAsync(int channelId)
@@ -69,12 +74,10 @@ public sealed class WebRTCVoiceClient : IDisposable
         _channelId = channelId;
         StatusChanged?.Invoke("подключение к WebRTC...");
 
-        // Join signaling room
         var (peers, roomId) = await _api.WebRTCJoinAsync(channelId);
         _roomId = roomId;
         StatusChanged?.Invoke($"в комнате {roomId}, peers: {peers.Count}");
 
-        // Create peer connection
         var config = new RTCConfiguration
         {
             iceServers = new List<RTCIceServer>
@@ -96,11 +99,9 @@ public sealed class WebRTCVoiceClient : IDisposable
         };
         _pc = new RTCPeerConnection(config);
 
-        // Add audio track
         var audioTrack = new MediaStreamTrack(SDPWellKnownMediaFormatsEnum.PCMU);
         _pc.addTrack(audioTrack);
 
-        // Handle incoming audio
         _pc.OnRtpPacketReceived += (ep, media, rtpPkt) =>
         {
             if (media != SDPMediaTypesEnum.audio) return;
@@ -114,8 +115,11 @@ public sealed class WebRTCVoiceClient : IDisposable
                     var outBytes = new byte[n * 2];
                     for (int i = 0; i < n; i++)
                     {
-                        outBytes[i * 2] = (byte)(pcm[i] & 0xFF);
-                        outBytes[i * 2 + 1] = (byte)((pcm[i] >> 8) & 0xFF);
+                        short sample = pcm[i];
+                        if (_volume != 100)
+                            sample = (short)Math.Clamp(sample * (_volume / 100f), short.MinValue, short.MaxValue);
+                        outBytes[i * 2] = (byte)(sample & 0xFF);
+                        outBytes[i * 2 + 1] = (byte)((sample >> 8) & 0xFF);
                     }
                     _playbackBuffer?.AddSamples(outBytes, 0, n * 2);
                 }
@@ -133,7 +137,6 @@ public sealed class WebRTCVoiceClient : IDisposable
             }
         };
 
-        // Setup audio capture
         _capture = new WaveInEvent
         {
             WaveFormat = new WaveFormat(SampleRate, 16, Channels),
@@ -142,7 +145,6 @@ public sealed class WebRTCVoiceClient : IDisposable
         };
         _capture.DataAvailable += OnCaptureDataAvailable;
 
-        // Setup playback
         _playback = new WaveOutEvent { Volume = Math.Clamp(_volume / 100f, 0f, 1f) };
         _playbackBuffer = new BufferedWaveProvider(new WaveFormat(SampleRate, 16, Channels))
         {
@@ -157,16 +159,14 @@ public sealed class WebRTCVoiceClient : IDisposable
         _capture.StartRecording();
         _playback.Play();
 
-        // Create offer
         var offer = _pc.createAnswer(null);
         await _pc.setLocalDescription(offer);
 
-        // Send offer to server
         var (answerSdp, _) = await _api.WebRTCOfferAsync(_roomId, offer.sdp);
         var answer = new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = answerSdp };
         _pc.setRemoteDescription(answer);
 
-        StatusChanged?.Invoke("WebRTC подключен");
+        StatusChanged?.Invoke("WebRTC подключен (Opus 128kbps + RNNoise)");
     }
 
     private void OnCaptureDataAvailable(object? sender, WaveInEventArgs e)
@@ -177,7 +177,6 @@ public sealed class WebRTCVoiceClient : IDisposable
         {
             if (_encoder == null) return;
 
-            // Convert bytes to shorts
             var frameShorts = new short[FrameSize];
             for (int i = 0; i < Math.Min(e.BytesRecorded / 2, FrameSize); i++)
             {
@@ -185,6 +184,16 @@ public sealed class WebRTCVoiceClient : IDisposable
                 if (MicGain != 1.0)
                     sample = (short)Math.Clamp(sample * MicGain, short.MinValue, short.MaxValue);
                 frameShorts[i] = sample;
+            }
+
+            if (NoiseSuppression && _denoiser != null)
+            {
+                for (int i = 0; i < FrameSize; i++)
+                    _denoiseBuf[i] = frameShorts[i] / 32768f;
+                _denoiser.Denoise(_denoiseBuf.AsSpan(0, 480), false);
+                _denoiser.Denoise(_denoiseBuf.AsSpan(480, 480), false);
+                for (int i = 0; i < FrameSize; i++)
+                    frameShorts[i] = (short)Math.Clamp((int)(_denoiseBuf[i] * 32768f), short.MinValue, short.MaxValue);
             }
 
             var opusBuf = new byte[1000];
@@ -222,6 +231,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         Disconnect();
         _encoder?.Dispose();
         _decoder?.Dispose();
+        _denoiser?.Dispose();
         _cts.Dispose();
     }
 }
