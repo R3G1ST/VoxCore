@@ -236,6 +236,42 @@ public sealed class ApiClient
         return msgs;
     }
 
+    public async Task<(List<int> Peers, string RoomId)> WebRTCJoinAsync(int channelId)
+    {
+        var r = await CallAsync(new { op = "webrtc_join", token = Token, channel = channelId });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось подключиться к комнате");
+        var peers = r.Data.GetProperty("peers").EnumerateArray().Select(x => x.GetInt32()).ToList();
+        var roomId = r.Data.GetProperty("roomId").GetString() ?? "";
+        return (peers, roomId);
+    }
+
+    public async Task WebRTCLeaveAsync(string roomId)
+    {
+        var r = await CallAsync(new { op = "webrtc_leave", token = Token, room = roomId });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось покинуть комнату");
+    }
+
+    public async Task<(string Sdp, List<int> Peers)> WebRTCOfferAsync(string roomId, string sdp)
+    {
+        var r = await CallAsync(new { op = "webrtc_offer", token = Token, room = roomId, sdp });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить offer");
+        var answerSdp = r.Data.GetProperty("sdp").GetString() ?? "";
+        var peers = r.Data.GetProperty("peers").EnumerateArray().Select(x => x.GetInt32()).ToList();
+        return (answerSdp, peers);
+    }
+
+    public async Task WebRTCAnswerAsync(string roomId, string sdp)
+    {
+        var r = await CallAsync(new { op = "webrtc_answer", token = Token, room = roomId, sdp });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить answer");
+    }
+
+    public async Task WebRTCIceAsync(string roomId, string candidate)
+    {
+        var r = await CallAsync(new { op = "webrtc_ice", token = Token, room = roomId, candidate });
+        if (!r.Ok) throw new ApiException(r.Err ?? "не удалось отправить ICE candidate");
+    }
+
     private async Task<ApiResult> CallAsync(object payload)
     {
         using var client = new TcpClient();
