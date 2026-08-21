@@ -491,6 +491,8 @@ static string WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDic
     var answer = pc.createAnswer(null);
     pc.setLocalDescription(answer).Wait();
 
+    Thread.Sleep(500);
+
     var peers = room.Keys.Where(id => id != user.Id).ToList();
     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC OFFER  room={roomId} user={user.Name} -> {peers.Count} peers");
     return Ok(new { sdp = pc.localDescription.sdp, peers });
@@ -532,7 +534,19 @@ static RTCPeerConnection CreatePeerConnection(string roomId, User user, Concurre
     {
         iceServers = new List<RTCIceServer>
         {
-            new RTCIceServer { urls = "stun:stun.l.google.com:19302" }
+            new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
+            new RTCIceServer
+            {
+                urls = "turn:194.31.204.5:3478",
+                username = "voxcore",
+                credential = "voxcore123"
+            },
+            new RTCIceServer
+            {
+                urls = "turn:194.31.204.5:3478?transport=tcp",
+                username = "voxcore",
+                credential = "voxcore123"
+            }
         }
     };
     var pc = new RTCPeerConnection(config);

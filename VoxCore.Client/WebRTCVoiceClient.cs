@@ -99,6 +99,14 @@ public sealed class WebRTCVoiceClient : IDisposable
         };
         _pc = new RTCPeerConnection(config);
 
+        _pc.onicecandidate += (candidate) =>
+        {
+            if (candidate != null && !string.IsNullOrEmpty(candidate.candidate))
+            {
+                _ = _api.WebRTCIceAsync(_roomId, candidate.candidate);
+            }
+        };
+
         var audioTrack = new MediaStreamTrack(SDPWellKnownMediaFormatsEnum.PCMU);
         _pc.addTrack(audioTrack);
 

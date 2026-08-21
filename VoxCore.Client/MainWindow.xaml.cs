@@ -311,15 +311,14 @@ public sealed partial class MainWindow : Window
         LeaveChannel();
         bool connected = false;
 
-        // Try WebRTC first (with 5s timeout)
+        // Try WebRTC first (with 15s timeout)
         if (_useWebRtc && _webrtc != null)
         {
             try
             {
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var connectTask = _webrtc.ConnectAsync(ch.Id);
-                await Task.WhenAny(connectTask, Task.Delay(5000, cts.Token));
-                if (connectTask.IsCompleted && !connectTask.IsFaulted)
+                var completed = await Task.WhenAny(connectTask, Task.Delay(15000));
+                if (completed == connectTask && !connectTask.IsFaulted)
                 {
                     await connectTask;
                     connected = true;
