@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 
 namespace VoxCore.Client;
@@ -11,10 +12,8 @@ public sealed class MemberItem : INotifyPropertyChanged
     public string Name { get; }
     public string Letter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
     public Brush ColorBrush { get; }
-    public string Status { get; } = "в голосовом канале";
 
     private bool _isSpeaking;
-
     public bool IsSpeaking
     {
         get => _isSpeaking;
@@ -27,15 +26,51 @@ public sealed class MemberItem : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakingBrush)));
         }
     }
-
     public string SpeakingText => _isSpeaking ? "●" : "";
     public Brush SpeakingBrush => _isSpeaking ? MainWindow.BrushFromHex("#3ba55d") : MainWindow.BrushFromHex("#00000000");
+
+    private bool _isScreenSharing;
+    public bool IsScreenSharing
+    {
+        get => _isScreenSharing;
+        set
+        {
+            if (_isScreenSharing == value) return;
+            _isScreenSharing = value;
+            _screenShareStarted = value ? DateTime.Now : null;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScreenSharing)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenShareStatusText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenShareStatusBrush)));
+        }
+    }
+
+    public string ScreenShareStatusText
+    {
+        get
+        {
+            if (!_isScreenSharing) return "";
+            var elapsed = _screenShareStarted.HasValue ? DateTime.Now - _screenShareStarted.Value : TimeSpan.Zero;
+            return $"🖥 демонстрация экрана — {elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+        }
+    }
+
+    public Brush ScreenShareStatusBrush => _isScreenSharing
+        ? MainWindow.BrushFromHex("#3ba55d")
+        : MainWindow.BrushFromHex("#00000000");
+
+    private DateTime? _screenShareStarted;
 
     public MemberItem(string name)
     {
         Name = name;
         var hex = Colors[Math.Abs(name.GetHashCode()) % Colors.Length];
         ColorBrush = MainWindow.BrushFromHex(hex);
+    }
+
+    public void RefreshShareTime()
+    {
+        if (_isScreenSharing)
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenShareStatusText)));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

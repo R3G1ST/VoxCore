@@ -119,6 +119,8 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "screen_start" => user is null ? Error("unauthorized") : ScreenStart(req, store, user.Id),
         "screen_stop" => user is null ? Error("unauthorized") : ScreenStop(user.Id),
         "screen_frame" => user is null ? Error("unauthorized") : ScreenFrame(req, user.Id, webrtcRooms),
+        "screen_list" => ScreenList(store),
+        "screen_get" => ScreenGet(req, store),
         _ => Error("unknown op")
     };
 }
@@ -574,6 +576,7 @@ static string ScreenStart(JsonElement req, Store store, int userId)
 
 static string ScreenStop(int userId)
 {
+    ScreenFrameStore.Remove(userId);
     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Screen share stopped by userId={userId}");
     return JsonSerializer.Serialize(new { ok = true });
 }
@@ -585,18 +588,44 @@ static string ScreenFrame(JsonElement req, int userId, ConcurrentDictionary<stri
 
     if (frameB64.Length == 0) return Error("пустой кадр");
 
+    ScreenFrameStore.StoreFrame(userId, frameB64);
+
     if (webrtcRooms.TryGetValue(room, out var peers))
     {
         foreach (var peer in peers)
         {
             if (peer.Key != userId)
-            {
-                ScreenFrameStore.StoreFrame(peer.Key, frameB64);
-            }
+                ScreenFrameStore.StoreFrame(userId, frameB64);
         }
     }
 
     return JsonSerializer.Serialize(new { ok = true });
+}
+
+static string ScreenList(Store store)
+{
+    var activeIds = ScreenFrameStore.GetActiveSharers();
+    var names = new List<string>();
+    foreach (var id in activeIds)
+    {
+        var u = store.FindUserById(id);
+        if (u != null) names.Add(u.Name);
+    }
+    return JsonSerializer.Serialize(new { ok = true, sharers = names });
+}
+
+static string ScreenGet(JsonElement req, Store store)
+{
+    var name = req.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+    if (string.IsNullOrEmpty(name)) return Error("нет имени");
+
+    var user = store.FindUserByName(name);
+    if (user == null) return Error("нет такого юзера");
+
+    var frame = ScreenFrameStore.GetFrameB64(user.Id);
+    if (frame == null) return JsonSerializer.Serialize(new { ok = true, frame = "" });
+
+    return JsonSerializer.Serialize(new { ok = true, frame });
 }
 
 public sealed class Member

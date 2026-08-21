@@ -13,6 +13,7 @@
             <SolidColorBrush x:Key="BorderBrush" Color="#181820" />
             <SolidColorBrush x:Key="AccentBrush" Color="#00ff88" />
             <SolidColorBrush x:Key="DimBrush" Color="#5a5a6a" />
+            <local:BooleanToVisibilityConverter x:Key="BoolToVis" />
             <SolidColorBrush x:Key="UserColorBrush" Color="#5865f2" />
             <Style x:Key="VcButton" TargetType="Button">
                 <Setter Property="Background" Value="#08080e" />

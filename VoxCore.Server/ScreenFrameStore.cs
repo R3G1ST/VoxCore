@@ -24,4 +24,19 @@ public class ScreenFrameStore
         }
         return null;
     }
+
+    public static List<int> GetActiveSharers()
+    {
+        var now = DateTime.UtcNow;
+        return _lastUpdate
+            .Where(kv => (now - kv.Value).TotalSeconds < 5)
+            .Select(kv => kv.Key)
+            .ToList();
+    }
+
+    public static void Remove(int userId)
+    {
+        _frames.TryRemove(userId, out _);
+        _lastUpdate.TryRemove(userId, out _);
+    }
 }

@@ -251,6 +251,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <!-- Header: Голосовая связь подключена -->
@@ -270,8 +271,12 @@
                                 ToolTipService.ToolTip="отключиться" />
                     </Grid>
 
+                    <!-- Screen share status -->
+                    <TextBlock x:Name="ScreenShareStatusText" Grid.Row="1" Text="" FontFamily="Cascadia Code"
+                               FontSize="11" Foreground="#949ba4" Margin="0,0,0,6" TextWrapping="Wrap" />
+
                     <!-- Channel info + controls -->
-                    <Grid Grid.Row="1">
+                    <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -472,27 +477,62 @@
             <TextBlock Grid.Row="0" Text="УЧАСТНИКИ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
                        Padding="16,14" />
             <ListView x:Name="MembersList" Grid.Row="1" Background="Transparent" BorderThickness="0"
-                      SelectionMode="None" Padding="8,0,8,8">
+                      SelectionMode="None" Padding="8,0,8,8" IsItemClickEnabled="True"
+                      ItemClick="MembersList_ItemClick">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListViewItem">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="10" Padding="6,5">
-                            <Border Width="32" Height="32" CornerRadius="16"
-                                    Background="{Binding ColorBrush}">
-                                <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code" FontWeight="Bold"
-                                           Foreground="White" FontSize="14"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <StackPanel VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code" FontSize="14"
-                                               Foreground="#dbdee1" />
-                                    <TextBlock Text="{Binding SpeakingText}" FontSize="12" Foreground="{Binding SpeakingBrush}"
-                                               VerticalAlignment="Center" />
+                        <Grid Padding="2,2" CornerRadius="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Padding="6,5">
+                                <Grid Width="32" Height="32">
+                                    <Border Width="32" Height="32" CornerRadius="16"
+                                            Background="{Binding ColorBrush}">
+                                        <TextBlock Text="{Binding Letter}" FontFamily="Cascadia Code" FontWeight="Bold"
+                                                   Foreground="White" FontSize="14"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,-2,-2"
+                                            Visibility="{Binding IsSpeaking, Converter={StaticResource BoolToVis}}">
+                                        <Border.Background>
+                                            <SolidColorBrush Color="#3ba55d" />
+                                        </Border.Background>
+                                    </Border>
+                                </Grid>
+                                <StackPanel VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Name}" FontFamily="Cascadia Code" FontSize="13"
+                                                   Foreground="#dbdee1" />
+                                        <TextBlock Text="{Binding SpeakingText}" FontSize="10" Foreground="{Binding SpeakingBrush}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="в голосовом канале" FontFamily="Cascadia Code" FontSize="10"
+                                               Foreground="#949ba4" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Status}" FontFamily="Cascadia Code" FontSize="10"
-                                           Foreground="#949ba4" />
                             </StackPanel>
-                        </StackPanel>
+                            <TextBlock Grid.Row="1" Text="{Binding ScreenShareStatusText}"
+                                       FontFamily="Cascadia Code" FontSize="10"
+                                       Foreground="{Binding ScreenShareStatusBrush}"
+                                       Padding="48,0,0,4" />
+                        </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>

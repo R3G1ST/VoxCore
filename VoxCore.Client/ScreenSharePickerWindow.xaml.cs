@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace VoxCore.Client;
@@ -27,48 +26,48 @@ public sealed partial class ScreenSharePickerWindow : Window
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(420, 520));
         AppWindow.Title = "Выбор демонстрации";
-
         PickerTcs = new TaskCompletionSource<bool>();
-        Closed += (_, _) =>
-        {
-            if (PickerTcs.Task.Status == TaskStatus.WaitingForActivation)
-                PickerTcs.TrySetResult(false);
-        };
-
         LoadItems();
     }
 
     private void LoadItems()
     {
-        var screens = System.Windows.Forms.Screen.AllScreens;
-        for (int i = 0; i < screens.Length; i++)
+        try
         {
-            var s = screens[i];
-            _displays.Add(new DisplayItem
+            var screens = System.Windows.Forms.Screen.AllScreens;
+            for (int i = 0; i < screens.Length; i++)
             {
-                Index = i,
-                Name = $"Дисплей {i + 1}: {s.Bounds.Width}x{s.Bounds.Height}",
-                Primary = s.Primary
-            });
+                var s = screens[i];
+                _displays.Add(new DisplayItem
+                {
+                    Index = i,
+                    Name = $"Дисплей {i + 1}: {s.Bounds.Width}x{s.Bounds.Height}",
+                    Primary = s.Primary
+                });
+            }
+            DisplaysList.ItemsSource = _displays;
         }
-        DisplaysList.ItemsSource = _displays;
+        catch { _displays.Add(new DisplayItem { Index = 0, Name = "Дисплей 1: 1920x1080" }); DisplaysList.ItemsSource = _displays; }
 
-        EnumWindows((h, _) =>
+        try
         {
-            if (!IsWindowVisible(h)) return true;
-            int len = GetWindowTextLength(h);
-            if (len == 0) return true;
-            var sb = new System.Text.StringBuilder(len + 1);
-            GetWindowText(h, sb, sb.Capacity);
-            string title = sb.ToString();
-            if (string.IsNullOrWhiteSpace(title) || title.Contains("VoxCore")) return true;
-            GetWindowRect(h, out RECT r);
-            int w = r.R - r.L, h2 = r.B - r.T;
-            if (w < 100 || h2 < 100) return true;
-            _windows.Add(new WindowItem { Handle = h, Title = title, Width = w, Height = h2 });
-            return true;
-        }, IntPtr.Zero);
-
+            EnumWindows((h, _) =>
+            {
+                if (!IsWindowVisible(h)) return true;
+                int len = GetWindowTextLength(h);
+                if (len == 0) return true;
+                var sb = new System.Text.StringBuilder(len + 1);
+                GetWindowText(h, sb, sb.Capacity);
+                string title = sb.ToString();
+                if (string.IsNullOrWhiteSpace(title) || title.Contains("VoxCore")) return true;
+                GetWindowRect(h, out RECT r);
+                int w = r.R - r.L, h2 = r.B - r.T;
+                if (w < 100 || h2 < 100) return true;
+                _windows.Add(new WindowItem { Handle = h, Title = title, Width = w, Height = h2 });
+                return true;
+            }, IntPtr.Zero);
+        }
+        catch { }
         WindowsList.ItemsSource = _windows;
     }
 
@@ -104,14 +103,19 @@ public sealed partial class ScreenSharePickerWindow : Window
         ScreenSharePickerResult.WindowHandle = _selectedWindow;
         ScreenSharePickerResult.Confirmed = true;
 
-        PickerTcs?.TrySetResult(true);
+        var tcs = PickerTcs;
+        PickerTcs = null;
+        tcs?.TrySetResult(true);
+
         Close();
     }
 
     private void CancelBtn_Click(object sender, RoutedEventArgs e)
     {
         ScreenSharePickerResult.Reset();
-        PickerTcs?.TrySetResult(false);
+        var tcs = PickerTcs;
+        PickerTcs = null;
+        tcs?.TrySetResult(false);
         Close();
     }
 }

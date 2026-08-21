@@ -1,11 +1,15 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
+using System.Runtime.InteropServices;
 using Windows.Storage.Streams;
 
 namespace VoxCore.Client;
 
 public sealed partial class ScreenShareViewerWindow : Window
 {
+    [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr hWnd);
+    [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string? name);
+
     private readonly string _sharerName;
     private readonly DispatcherTimer _pollTimer;
 
@@ -49,5 +53,10 @@ public sealed partial class ScreenShareViewerWindow : Window
         catch { }
     }
 
-    private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
+    private void CloseBtn_Click(object sender, RoutedEventArgs e)
+    {
+        _pollTimer.Stop();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        DestroyWindow(hwnd);
+    }
 }

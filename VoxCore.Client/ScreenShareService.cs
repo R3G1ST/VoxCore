@@ -67,15 +67,26 @@ public sealed class ScreenShareService : IDisposable
     {
         if (_isCapturing) return;
 
-        _cts = new CancellationTokenSource();
-        _isCapturing = true;
-        _captureThread = new Thread(() => CaptureLoop(_cts.Token))
+        try
         {
-            IsBackground = true,
-            Priority = ThreadPriority.Highest
-        };
-        _captureThread.Start();
-        StatusChanged?.Invoke("демонстрация экрана активна");
+            _cts = new CancellationTokenSource();
+            _isCapturing = true;
+            _captureThread = new Thread(() =>
+            {
+                try { CaptureLoop(_cts.Token); }
+                catch (Exception ex) { StatusChanged?.Invoke($"критическая ошибка: {ex.Message}"); }
+            })
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.Normal
+            };
+            _captureThread.Start();
+            StatusChanged?.Invoke("демонстрация экрана активна");
+        }
+        catch (Exception ex)
+        {
+            StatusChanged?.Invoke($"ошибка запуска: {ex.Message}");
+        }
     }
 
     private void CaptureLoop(CancellationToken ct)
@@ -130,6 +141,9 @@ public sealed class ScreenShareService : IDisposable
 
     private byte[]? CaptureDisplay(int index)
     {
+        IntPtr hdcScreen = IntPtr.Zero;
+        IntPtr hdcMem = IntPtr.Zero;
+        IntPtr hBitmap = IntPtr.Zero;
         try
         {
             var screens = System.Windows.Forms.Screen.AllScreens;
@@ -137,9 +151,11 @@ public sealed class ScreenShareService : IDisposable
             var screen = screens[index];
             var bounds = screen.Bounds;
 
-            IntPtr hdcScreen = GetDC(IntPtr.Zero);
-            IntPtr hdcMem = CreateCompatibleDC(hdcScreen);
-            IntPtr hBitmap = CreateCompatibleBitmap(hdcScreen, bounds.Width, bounds.Height);
+            hdcScreen = GetDC(IntPtr.Zero);
+            if (hdcScreen == IntPtr.Zero) { StatusChanged?.Invoke("GetDC failed"); return null; }
+
+            hdcMem = CreateCompatibleDC(hdcScreen);
+            hBitmap = CreateCompatibleBitmap(hdcScreen, bounds.Width, bounds.Height);
             IntPtr hOld = SelectObject(hdcMem, hBitmap);
 
             BitBlt(hdcMem, 0, 0, bounds.Width, bounds.Height, hdcScreen, bounds.X, bounds.Y, SRCCOPY);
@@ -148,13 +164,19 @@ public sealed class ScreenShareService : IDisposable
             var bmp = Image.FromHbitmap(hBitmap);
             var bytes = ImageToJpeg(bmp, JpegQuality);
             bmp.Dispose();
-            DeleteObject(hBitmap);
-            DeleteDC(hdcMem);
-            ReleaseDC(IntPtr.Zero, hdcScreen);
-
             return bytes;
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            StatusChanged?.Invoke($"ошибка захвата: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            if (hBitmap != IntPtr.Zero) DeleteObject(hBitmap);
+            if (hdcMem != IntPtr.Zero) DeleteDC(hdcMem);
+            if (hdcScreen != IntPtr.Zero) ReleaseDC(IntPtr.Zero, hdcScreen);
+        }
     }
 
     private byte[]? CaptureWindow(IntPtr hwnd)

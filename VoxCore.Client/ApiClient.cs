@@ -291,6 +291,29 @@ public sealed class ApiClient
         if (!r.Ok) throw new ApiException(r.Err ?? "не удалось остановить демонстрацию");
     }
 
+    public async Task<List<string>> ScreenListAsync()
+    {
+        var r = await CallAsync(new { op = "screen_list", token = Token });
+        if (!r.Ok) return [];
+        if (r.Data.ValueKind != JsonValueKind.Object) return [];
+        var sharers = r.Data.TryGetProperty("sharers", out var s) ? s : default;
+        var result = new List<string>();
+        if (sharers.ValueKind == JsonValueKind.Array)
+            foreach (var item in sharers.EnumerateArray())
+                result.Add(item.GetString() ?? "");
+        return result;
+    }
+
+    public async Task<byte[]?> ScreenGetFrameAsync(string name)
+    {
+        var r = await CallAsync(new { op = "screen_get", token = Token, name });
+        if (!r.Ok) return null;
+        if (r.Data.ValueKind != JsonValueKind.Object) return null;
+        var frame = r.Data.TryGetProperty("frame", out var f) ? f.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(frame)) return null;
+        return Convert.FromBase64String(frame);
+    }
+
     private async Task<ApiResult> CallAsync(object payload)
     {
         using var client = new TcpClient();

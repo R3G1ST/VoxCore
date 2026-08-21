@@ -93,6 +93,24 @@ public sealed partial class MainWindow : Window
         _chatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _chatTimer.Tick += async (_, _) => await RefreshChatAsync();
 
+        _shareStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _shareStatusTimer.Tick += (_, _) =>
+        {
+            var activeSharers = ScreenShareReceiver.GetActiveSharers();
+            foreach (var m in _members)
+            {
+                if (m.Name == _user.Name) continue;
+                m.IsScreenSharing = activeSharers.Contains(m.Name);
+                if (m.IsScreenSharing)
+                    m.RefreshShareTime();
+            }
+        };
+        _shareStatusTimer.Start();
+
+        _screenPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _screenPollTimer.Tick += async (_, _) => await PollScreenSharersAsync();
+        _screenPollTimer.Start();
+
         Closed += OnWindowClosed;
         _voice.OpenMic = true;
         _ = RefreshChannelsAsync();
@@ -103,6 +121,13 @@ public sealed partial class MainWindow : Window
     {
         _refreshTimer.Stop();
         _chatTimer.Stop();
+        _shareStatusTimer.Stop();
+        _screenPollTimer.Stop();
+        _activeScreenShare?.StopCapture();
+        _activeScreenShare?.Dispose();
+        _screenShareViewer?.Close();
+        foreach (var v in _memberViewers.Values) v.Close();
+        _memberViewers.Clear();
         _voice.Dispose();
         _settings.Save();
     }
@@ -608,6 +633,11 @@ public sealed partial class MainWindow : Window
     {
         DispatcherQueue.TryEnqueue(() =>
         {
+            foreach (var m in _members)
+            {
+                if (m.Name == _user.Name)
+                    m.IsSpeaking = talking;
+            }
             if (talking)
             {
                 StatusText.Text = "говоришь...";
@@ -661,60 +691,64 @@ public sealed partial class MainWindow : Window
     }
 
     private ScreenShareService? _activeScreenShare;
+    private ScreenShareViewerWindow? _screenShareViewer;
 
     private async void ScreenShareBtn_Checked(object sender, RoutedEventArgs e)
     {
+        ScreenShareStatusText.Text = "открываю пикер...";
+
         if (_currentChannel == null)
         {
-            StatusText.Text = "не в канале";
+            ScreenShareStatusText.Text = "не в канале";
             ScreenShareBtn.IsChecked = false;
             return;
         }
 
         try
         {
-            StatusText.Text = "открываю пикер...";
             ScreenSharePickerResult.Reset();
             var picker = new ScreenSharePickerWindow();
             picker.Activate();
 
+            ScreenShareStatusText.Text = "ждём выбор в пикере...";
             bool confirmed = await ScreenSharePickerWindow.PickerTcs!.Task;
-            StatusText.Text = $"пикер: confirmed={confirmed}, DisplayIndex={ScreenSharePickerResult.DisplayIndex}, Handle={ScreenSharePickerResult.WindowHandle}";
 
-            if (!confirmed || (!ScreenSharePickerResult.Confirmed && ScreenSharePickerResult.DisplayIndex < 0 && ScreenSharePickerResult.WindowHandle == IntPtr.Zero))
+            if (!confirmed)
             {
-                StatusText.Text = "выбор отменён";
+                ScreenShareStatusText.Text = "";
                 ScreenShareBtn.IsChecked = false;
                 return;
             }
 
             var roomId = _webrtc?.RoomId ?? _currentChannel.Id.ToString();
-            StatusText.Text = $"roomId={roomId}, создаю захват...";
-
             _activeScreenShare = new ScreenShareService(_api, roomId);
-            _activeScreenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
+            _activeScreenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => ScreenShareStatusText.Text = msg);
 
             if (ScreenSharePickerResult.DisplayIndex >= 0)
-            {
                 _activeScreenShare.SetTargetDisplay(ScreenSharePickerResult.DisplayIndex);
-                StatusText.Text = $"захват дисплея {ScreenSharePickerResult.DisplayIndex + 1}...";
-            }
             else if (ScreenSharePickerResult.WindowHandle != IntPtr.Zero)
-            {
                 _activeScreenShare.SetTargetWindow(ScreenSharePickerResult.WindowHandle);
-                StatusText.Text = "захват окна...";
-            }
 
-            StatusText.Text = "отправляю screen_start...";
-            await _api.ScreenShareStartAsync(_currentChannel.Id);
-            StatusText.Text = "запускаю захват...";
+            ScreenShareStatusText.Text = "запускаю захват...";
+            _activeScreenShare.FrameSent += (frame) =>
+            {
+                ScreenShareReceiver.UpdateFrame(_user.Name, frame);
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (_screenShareViewer == null)
+                    {
+                        _screenShareViewer = new ScreenShareViewerWindow(_user.Name);
+                        _screenShareViewer.Closed += (_, _) => _screenShareViewer = null;
+                        _screenShareViewer.Activate();
+                    }
+                });
+            };
             _activeScreenShare.StartCapture();
             ScreenShareDot.Visibility = Visibility.Visible;
-            StatusText.Text = "демонстрация активна!";
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"ОШИБКА: {ex.Message}";
+            ScreenShareStatusText.Text = $"ОШИБКА: {ex.Message}";
             ScreenShareBtn.IsChecked = false;
         }
     }
@@ -724,15 +758,62 @@ public sealed partial class MainWindow : Window
         _activeScreenShare?.StopCapture();
         _activeScreenShare?.Dispose();
         _activeScreenShare = null;
+        _screenShareViewer?.Close();
+        _screenShareViewer = null;
         _ = _api.ScreenShareStopAsync();
+        ScreenShareReceiver.Remove(_user.Name);
         ScreenShareDot.Visibility = Visibility.Collapsed;
-        StatusText.Text = "демонстрация остановлена";
+        ScreenShareStatusText.Text = "";
     }
 
     private void SettingsBtn_Click(object sender, RoutedEventArgs e)
     {
         var settingsWin = new SettingsWindow(_settings, _voice, _webrtc);
         settingsWin.Activate();
+    }
+
+    private readonly Dictionary<string, ScreenShareViewerWindow> _memberViewers = new();
+    private readonly DispatcherTimer _shareStatusTimer;
+    private readonly DispatcherTimer _screenPollTimer;
+
+    private void MembersList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not MemberItem member) return;
+        if (!member.IsScreenSharing)
+        {
+            ScreenShareStatusText.Text = $"{member.Name} не демонстрирует экран";
+            return;
+        }
+        if (_memberViewers.TryGetValue(member.Name, out var existing) && existing != null)
+        {
+            existing.Activate();
+            return;
+        }
+        var viewer = new ScreenShareViewerWindow(member.Name);
+        _memberViewers[member.Name] = viewer;
+        viewer.Closed += (_, _) => _memberViewers.Remove(member.Name);
+        viewer.Activate();
+    }
+
+    private async Task PollScreenSharersAsync()
+    {
+        try
+        {
+            var sharers = await _api.ScreenListAsync();
+            foreach (var m in _members)
+            {
+                if (m.Name == _user.Name) continue;
+                m.IsScreenSharing = sharers.Contains(m.Name);
+            }
+            foreach (var name in sharers)
+            {
+                if (name == _user.Name) continue;
+                var frame = await _api.ScreenGetFrameAsync(name);
+                if (frame != null && frame.Length > 0)
+                    ScreenShareReceiver.UpdateFrame(name, frame);
+            }
+        }
+        catch { }
     }
 
     // ---------- Чат в канале ----------
