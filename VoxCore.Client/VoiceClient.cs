@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using Concentus;
 using Concentus.Enums;
 using Concentus.Structs;
 using NAudio.Wave;
@@ -26,8 +27,8 @@ public sealed class VoiceClient : IDisposable
     private WaveInEvent? _capture;
     private WaveOutEvent? _playback;
     private BufferedWaveProvider? _playbackBuffer;
-    private OpusEncoder? _encoder;
-    private OpusDecoder? _decoder;
+    private IOpusEncoder? _encoder;
+    private IOpusDecoder? _decoder;
     private Denoiser? _denoiser;
     private readonly float[] _denoiseBuf = new float[FrameSize];
     private Thread? _encodeThread;
@@ -76,14 +77,14 @@ public sealed class VoiceClient : IDisposable
         _udp = new UdpClient(server, port);
         _udp.Client.SendTimeout = 1000;
 
-        _encoder = OpusEncoder.Create(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
+        _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
         _encoder.Bitrate = 96000;
         _encoder.Complexity = 10;
         _encoder.UseDTX = true;
         _encoder.UseInbandFEC = true;
         _encoder.PacketLossPercent = 10;
 
-        _decoder = OpusDecoder.Create(SampleRate, Channels);
+        _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
         if (_noiseSuppression) _denoiser = new Denoiser();
 
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
@@ -188,7 +189,7 @@ public sealed class VoiceClient : IDisposable
                             for (int i = 0; i < frameShorts.Length; i++)
                                 frameShorts[i] = (short)Math.Clamp(frameShorts[i] * g, short.MinValue, short.MaxValue);
                         }
-                        int n = _encoder.Encode(frameShorts, 0, FrameSize, opusBuf, 0, opusBuf.Length);
+                        int n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
                         SendAudio(opusBuf, n);
                     }
                 }
@@ -289,7 +290,7 @@ public sealed class VoiceClient : IDisposable
                         if (payload.Length == 0) continue;
                         SpeakerStarted?.Invoke(speaker);
                         lock (_speakerLock) _speakerLast[speaker] = DateTime.UtcNow;
-                        int n = _decoder.Decode(payload, 0, payload.Length, pcmBuf, 0, FrameSize, false);
+                        int n = _decoder.Decode(payload.AsSpan(), pcmBuf.AsSpan(), FrameSize, false);
                         for (int i = 0; i < n; i++)
                         {
                             outBytes[i * 2] = (byte)(pcmBuf[i] & 0xFF);
