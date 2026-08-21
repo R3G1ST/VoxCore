@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     private readonly ApiClient _api;
     private readonly AppSettings _settings;
     private readonly VoiceClient _voice = new();
+    private readonly WebRTCVoiceClient? _webrtc;
     private readonly ObservableCollection<MemberItem> _members = [];
     private readonly ObservableCollection<ChatMessage> _channelMessages = [];
     private readonly ObservableCollection<ChatMessage> _dmMessages = [];
@@ -32,12 +33,23 @@ public sealed partial class MainWindow : Window
     private UserInfo? _currentDmFriend;
     private int _lastChannelMsgId;
     private int _lastDmMsgId;
+    private bool _useWebRtc = true;
 
     public MainWindow(ApiClient api, AppSettings settings, UserInfo user)
     {
         _api = api;
         _settings = settings;
         _user = user;
+
+        // Try WebRTC first, fallback to UDP
+        try
+        {
+            var host = _settings.Server.Split(':')[0];
+            _webrtc = new WebRTCVoiceClient(api, host);
+            _webrtc.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
+        }
+        catch { _useWebRtc = false; }
+
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1100, 700));
         AppWindow.Title = "VoxCore";
@@ -272,6 +284,35 @@ public sealed partial class MainWindow : Window
         }
 
         LeaveChannel();
+
+        if (_useWebRtc && _webrtc != null)
+        {
+            try
+            {
+                await _webrtc.ConnectAsync(ch.Id);
+                _currentChannel = ch;
+                ChannelNameText.Text = ch.Name;
+                ChannelStatusText.Text = "WebRTC подключен";
+                LeaveChannelBtn.Visibility = Visibility.Visible;
+                StatusText.Text = $"WebRTC: {ch.Name}";
+                VoiceStatusPanel.Visibility = Visibility.Collapsed;
+                ChannelChatPanel.Visibility = Visibility.Visible;
+                _lastChannelMsgId = 0;
+                _channelMessages.Clear();
+                CloseDmPanel();
+                _chatTimer.Start();
+                _ = LoadChannelChatAsync();
+                RenderChannels();
+                return;
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
+                _useWebRtc = false;
+            }
+        }
+
+        // Fallback to UDP
         var host = _settings.Server.Split(':')[0];
         _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
         _currentChannel = ch;
@@ -292,6 +333,7 @@ public sealed partial class MainWindow : Window
     private void LeaveChannel()
     {
         _voice.Disconnect();
+        _webrtc?.Disconnect();
         _currentChannel = null;
         ChannelNameText.Text = "не в канале";
         ChannelStatusText.Text = "выбери канал слева";
