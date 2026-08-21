@@ -672,14 +672,15 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            ScreenSharePickerResult.Reset();
             var picker = new ScreenSharePickerWindow();
             picker.Activate();
-            await Task.Delay(500);
 
-            // Wait for picker to close
-            while (picker.Visible) await Task.Delay(100);
+            // Wait for picker to close (poll every 200ms)
+            while (picker.Visible)
+                await Task.Delay(200);
 
-            if (!picker.Confirmed)
+            if (!ScreenSharePickerResult.Confirmed)
             {
                 ScreenShareBtn.IsChecked = false;
                 return;
@@ -688,16 +689,21 @@ public sealed partial class MainWindow : Window
             var roomId = _webrtc?.RoomId ?? _currentChannel.Id.ToString();
             _activeScreenShare = new ScreenShareService(_api, roomId);
 
-            if (picker.SelectedDisplay != null)
-                _activeScreenShare.SetTargetDisplay(picker.SelectedDisplay.Index);
-            else if (picker.SelectedWindow != null)
-                _activeScreenShare.SetTargetWindow(picker.SelectedWindow.Handle);
+            if (ScreenSharePickerResult.DisplayIndex >= 0)
+            {
+                _activeScreenShare.SetTargetDisplay(ScreenSharePickerResult.DisplayIndex);
+                StatusText.Text = $"демонстрация дисплея {ScreenSharePickerResult.DisplayIndex + 1}";
+            }
+            else if (ScreenSharePickerResult.WindowHandle != IntPtr.Zero)
+            {
+                _activeScreenShare.SetTargetWindow(ScreenSharePickerResult.WindowHandle);
+                StatusText.Text = $"демонстрация окна: {ScreenSharePickerResult.WindowTitle}";
+            }
 
             await _api.ScreenShareStartAsync(_currentChannel.Id);
             _activeScreenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
             _activeScreenShare.StartCapture();
             ScreenShareDot.Visibility = Visibility.Visible;
-            StatusText.Text = "демонстрация экрана активна";
         }
         catch (Exception ex)
         {

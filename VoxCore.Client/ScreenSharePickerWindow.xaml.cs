@@ -1,189 +1,119 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace VoxCore.Client;
 
 public sealed partial class ScreenSharePickerWindow : Window
 {
-    private readonly List<DisplayInfo> _displays = [];
-    private readonly List<WindowInfo> _windows = [];
-    public DisplayInfo? SelectedDisplay { get; private set; }
-    public WindowInfo? SelectedWindow { get; private set; }
-    public bool Confirmed { get; private set; }
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+    delegate bool EnumWindowsProc(IntPtr h, IntPtr lp);
 
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    private static extern int GetWindowTextLength(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetWindowDC(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
-
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
-        IntPtr hdcSrc, int xSrc, int ySrc, int rop);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteObject(IntPtr hObject);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteDC(IntPtr hdc);
-
-    [DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int nIndex);
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT { public int Left, Top, Right, Bottom; }
-
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    private readonly List<DisplayItem> _displays = new();
+    private readonly List<WindowItem> _windows = new();
+    private int _selectedDisplay = -1;
+    private IntPtr _selectedWindow = IntPtr.Zero;
 
     public ScreenSharePickerWindow()
     {
         InitializeComponent();
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(400, 500));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(420, 520));
         AppWindow.Title = "Выбор демонстрации";
-
-        LoadDisplays();
-        LoadWindows();
+        LoadItems();
     }
 
-    private void LoadDisplays()
+    private void LoadItems()
     {
-        var screen = System.Windows.Forms.Screen.PrimaryScreen;
-        if (screen != null)
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        for (int i = 0; i < screens.Length; i++)
         {
-            _displays.Add(new DisplayInfo
+            var s = screens[i];
+            _displays.Add(new DisplayItem
             {
-                Name = $"Дисплей 1: {screen.Bounds.Width}x{screen.Bounds.Height}",
-                Width = screen.Bounds.Width,
-                Height = screen.Bounds.Height,
-                Index = 0
+                Index = i,
+                Name = $"Дисплей {i + 1}: {s.Bounds.Width}x{s.Bounds.Height}",
+                Primary = s.Primary
             });
         }
-
-        int i = 1;
-        foreach (var s in System.Windows.Forms.Screen.AllScreens)
-        {
-            if (s != screen)
-            {
-                _displays.Add(new DisplayInfo
-                {
-                    Name = $"Дисплей {i + 1}: {s.Bounds.Width}x{s.Bounds.Height}",
-                    Width = s.Bounds.Width,
-                    Height = s.Bounds.Height,
-                    Index = i
-                });
-            }
-            i++;
-        }
-
         DisplaysList.ItemsSource = _displays;
-        if (_displays.Count > 0) DisplaysList.SelectedIndex = 0;
-    }
 
-    private void LoadWindows()
-    {
-        EnumWindows((hWnd, lParam) =>
+        EnumWindows((h, _) =>
         {
-            if (!IsWindowVisible(hWnd)) return true;
-            int len = GetWindowTextLength(hWnd);
+            if (!IsWindowVisible(h)) return true;
+            int len = GetWindowTextLength(h);
             if (len == 0) return true;
-
             var sb = new System.Text.StringBuilder(len + 1);
-            GetWindowText(hWnd, sb, sb.Capacity);
+            GetWindowText(h, sb, sb.Capacity);
             string title = sb.ToString();
-
-            if (string.IsNullOrWhiteSpace(title)) return true;
-            if (title.Contains("VoxCore")) return true;
-
-            GetWindowRect(hWnd, out RECT rect);
-            int w = rect.Right - rect.Left;
-            int h = rect.Bottom - rect.Top;
-            if (w < 100 || h < 100) return true;
-
-            _windows.Add(new WindowInfo
-            {
-                Title = title,
-                Handle = hWnd,
-                Width = w,
-                Height = h
-            });
+            if (string.IsNullOrWhiteSpace(title) || title.Contains("VoxCore")) return true;
+            GetWindowRect(h, out RECT r);
+            int w = r.R - r.L, h2 = r.B - r.T;
+            if (w < 100 || h2 < 100) return true;
+            _windows.Add(new WindowItem { Handle = h, Title = title, Width = w, Height = h2 });
             return true;
         }, IntPtr.Zero);
 
         WindowsList.ItemsSource = _windows;
     }
 
-    private void Display_Click(object sender, RoutedEventArgs e)
+    private void DisplaysList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (DisplaysList.SelectedItem is DisplayInfo d)
+        if (DisplaysList.SelectedIndex >= 0)
         {
-            SelectedDisplay = d;
-            SelectedWindow = null;
+            _selectedDisplay = _displays[DisplaysList.SelectedIndex].Index;
+            _selectedWindow = IntPtr.Zero;
+            WindowsList.SelectedIndex = -1;
         }
     }
 
-    private void Window_Click(object sender, RoutedEventArgs e)
+    private void WindowsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (WindowsList.SelectedItem is WindowInfo w)
+        if (WindowsList.SelectedIndex >= 0)
         {
-            SelectedWindow = w;
-            SelectedDisplay = null;
+            _selectedWindow = _windows[WindowsList.SelectedIndex].Handle;
+            _selectedDisplay = -1;
+            DisplaysList.SelectedIndex = -1;
         }
     }
 
     private void ConfirmBtn_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedDisplay == null && SelectedWindow == null)
+        if (_selectedDisplay < 0 && _selectedWindow == IntPtr.Zero)
         {
             InfoText.Text = "выбери дисплей или окно";
             return;
         }
-        Confirmed = true;
+
+        ScreenSharePickerResult.DisplayIndex = _selectedDisplay;
+        ScreenSharePickerResult.WindowHandle = _selectedWindow;
+        ScreenSharePickerResult.Confirmed = true;
         Close();
     }
 
-    private void CancelBtn_Click(object sender, RoutedEventArgs e) => Close();
+    private void CancelBtn_Click(object sender, RoutedEventArgs e)
+    {
+        ScreenSharePickerResult.Reset();
+        Close();
+    }
 }
 
-public class DisplayInfo
+public class DisplayItem
 {
-    public string Name { get; set; } = "";
-    public int Width { get; set; }
-    public int Height { get; set; }
     public int Index { get; set; }
+    public string Name { get; set; } = "";
+    public bool Primary { get; set; }
 }
 
-public class WindowInfo
+public class WindowItem
 {
-    public string Title { get; set; } = "";
     public IntPtr Handle { get; set; }
+    public string Title { get; set; } = "";
     public int Width { get; set; }
     public int Height { get; set; }
 }
