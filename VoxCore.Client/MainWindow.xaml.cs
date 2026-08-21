@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly AppSettings _settings;
     private readonly VoiceClient _voice = new();
     private readonly WebRTCVoiceClient? _webrtc;
+    private readonly ScreenShareService _screenShare = new();
     private readonly ObservableCollection<MemberItem> _members = [];
     private readonly ObservableCollection<ChatMessage> _channelMessages = [];
     private readonly ObservableCollection<ChatMessage> _dmMessages = [];
@@ -81,6 +82,9 @@ public sealed partial class MainWindow : Window
         _voice.StatusChanged += OnStatusChanged;
         _voice.SpeakerStarted += OnSpeakerStarted;
         _voice.SpeakerStopped += OnSpeakerStopped;
+
+        _screenShare.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
+        _screenShare.FrameCaptured += (frame) => { /* WebRTC sends frame */ };
 
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _refreshTimer.Tick += async (_, _) =>
@@ -333,8 +337,11 @@ public sealed partial class MainWindow : Window
         ChannelNameText.Text = ch.Name;
         ChannelStatusText.Text = connected ? (connected && _webrtc?.IsConnected == true ? "WebRTC подключен" : "UDP подключен") : "не подключен";
         LeaveChannelBtn.Visibility = Visibility.Visible;
-        StatusText.Text = connected ? $"{(_webrtc?.IsConnected == true ? "WebRTC" : "UDP")}: {ch.Name}" : "ошибка";
+        VoiceChannelName.Text = ch.Name;
+        VoiceServerName.Text = "VoxCore";
+        VoiceConnectedPanel.Visibility = Visibility.Visible;
         VoiceStatusPanel.Visibility = Visibility.Collapsed;
+        StatusText.Text = connected ? $"{(_webrtc?.IsConnected == true ? "WebRTC" : "UDP")}: {ch.Name}" : "ошибка";
         ChannelChatPanel.Visibility = Visibility.Visible;
         _lastChannelMsgId = 0;
         _channelMessages.Clear();
@@ -348,12 +355,16 @@ public sealed partial class MainWindow : Window
     {
         _voice.Disconnect();
         _webrtc?.Disconnect();
+        _screenShare.StopCapture();
         _currentChannel = null;
         ChannelNameText.Text = "не в канале";
         ChannelStatusText.Text = "выбери канал слева";
         LeaveChannelBtn.Visibility = Visibility.Collapsed;
-        StatusText.Text = "отключено";
+        VoiceConnectedPanel.Visibility = Visibility.Collapsed;
         VoiceStatusPanel.Visibility = Visibility.Visible;
+        ScreenShareBtn.IsChecked = false;
+        ScreenShareDot.Visibility = Visibility.Collapsed;
+        StatusText.Text = "отключено";
         ChannelChatPanel.Visibility = Visibility.Collapsed;
         _chatTimer.Stop();
         _channelMessages.Clear();
@@ -651,26 +662,26 @@ public sealed partial class MainWindow : Window
         HeadMuteBtn.Content = "🔊";
     }
 
-    private void DeafenBtn_Checked(object sender, RoutedEventArgs e)
+    private async void ScreenShareBtn_Checked(object sender, RoutedEventArgs e)
     {
-        _voice.MicMuted = true;
-        _voice.PlaybackMuted = true;
-        _webrtc.MicMuted = true;
-        _webrtc.PlaybackMuted = true;
-        MicMuteBtn.IsChecked = true;
-        HeadMuteBtn.IsChecked = true;
-        DeafenBtn.Content = "🔇✅";
+        try
+        {
+            await _screenShare.StartCaptureAsync();
+            ScreenShareDot.Visibility = Visibility.Visible;
+            StatusText.Text = "демонстрация экрана активна";
+        }
+        catch (Exception ex)
+        {
+            ScreenShareBtn.IsChecked = false;
+            StatusText.Text = $"ошибка демонстрации: {ex.Message}";
+        }
     }
 
-    private void DeafenBtn_Unchecked(object sender, RoutedEventArgs e)
+    private void ScreenShareBtn_Unchecked(object sender, RoutedEventArgs e)
     {
-        _voice.MicMuted = false;
-        _voice.PlaybackMuted = false;
-        _webrtc.MicMuted = false;
-        _webrtc.PlaybackMuted = false;
-        MicMuteBtn.IsChecked = false;
-        HeadMuteBtn.IsChecked = false;
-        DeafenBtn.Content = "🔇";
+        _screenShare.StopCapture();
+        ScreenShareDot.Visibility = Visibility.Collapsed;
+        StatusText.Text = "демонстрация остановлена";
     }
 
     private void SettingsBtn_Click(object sender, RoutedEventArgs e)
