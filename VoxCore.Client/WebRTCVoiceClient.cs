@@ -107,7 +107,14 @@ public sealed class WebRTCVoiceClient : IDisposable
             }
         };
 
-        var audioTrack = new MediaStreamTrack(SDPWellKnownMediaFormatsEnum.PCMU);
+        var audioTrack = new MediaStreamTrack(
+            new SDPAudioVideoMediaFormat(
+                SDPMediaTypesEnum.audio,
+                111,
+                "opus",
+                48000,
+                2,
+                "minptime=10;useinbandfec=1"));
         _pc.addTrack(audioTrack);
 
         _pc.OnRtpPacketReceived += (ep, media, rtpPkt) =>
@@ -167,12 +174,16 @@ public sealed class WebRTCVoiceClient : IDisposable
         _capture.StartRecording();
         _playback.Play();
 
-        var offer = _pc.createAnswer(null);
+        var offer = _pc.createOffer(null);
         await _pc.setLocalDescription(offer);
+
+        StatusChanged?.Invoke("ожидание ICE candidates...");
+
+        await Task.Delay(2000);
 
         var (answerSdp, _) = await _api.WebRTCOfferAsync(_roomId, offer.sdp);
         var answer = new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = answerSdp };
-        _pc.setRemoteDescription(answer);
+        await _pc.setRemoteDescription(answer);
 
         StatusChanged?.Invoke("WebRTC подключен (Opus 128kbps + RNNoise)");
     }
@@ -209,7 +220,7 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (n > 0)
             {
                 var opusBytes = opusBuf.AsSpan(0, n).ToArray();
-                _pc.SendAudio(SampleRate, opusBytes);
+                _pc.SendAudio(960, opusBytes);
             }
         }
         catch { }

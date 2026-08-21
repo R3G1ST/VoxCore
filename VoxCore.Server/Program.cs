@@ -491,10 +491,14 @@ static string WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDic
     var answer = pc.createAnswer(null);
     pc.setLocalDescription(answer).Wait();
 
-    Thread.Sleep(500);
+    var deadline = DateTime.UtcNow.AddSeconds(5);
+    while (DateTime.UtcNow < deadline && pc.iceConnectionState != RTCIceConnectionState.connected && pc.iceConnectionState != RTCIceConnectionState.failed)
+    {
+        Thread.Sleep(100);
+    }
 
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC OFFER  room={roomId} user={user.Name} ice={pc.iceConnectionState}");
     var peers = room.Keys.Where(id => id != user.Id).ToList();
-    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC OFFER  room={roomId} user={user.Name} -> {peers.Count} peers");
     return Ok(new { sdp = pc.localDescription.sdp, peers });
 }
 
