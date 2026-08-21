@@ -20,11 +20,21 @@ public sealed partial class ScreenSharePickerWindow : Window
     private int _selectedDisplay = -1;
     private IntPtr _selectedWindow = IntPtr.Zero;
 
+    public static TaskCompletionSource<bool>? PickerTcs { get; private set; }
+
     public ScreenSharePickerWindow()
     {
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(420, 520));
         AppWindow.Title = "Выбор демонстрации";
+
+        PickerTcs = new TaskCompletionSource<bool>();
+        Closed += (_, _) =>
+        {
+            if (PickerTcs.Task.Status == TaskStatus.WaitingForActivation)
+                PickerTcs.TrySetResult(false);
+        };
+
         LoadItems();
     }
 
@@ -93,12 +103,15 @@ public sealed partial class ScreenSharePickerWindow : Window
         ScreenSharePickerResult.DisplayIndex = _selectedDisplay;
         ScreenSharePickerResult.WindowHandle = _selectedWindow;
         ScreenSharePickerResult.Confirmed = true;
+
+        PickerTcs?.TrySetResult(true);
         Close();
     }
 
     private void CancelBtn_Click(object sender, RoutedEventArgs e)
     {
         ScreenSharePickerResult.Reset();
+        PickerTcs?.TrySetResult(false);
         Close();
     }
 }

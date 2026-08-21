@@ -676,11 +676,10 @@ public sealed partial class MainWindow : Window
             var picker = new ScreenSharePickerWindow();
             picker.Activate();
 
-            // Wait for picker to close (poll every 200ms)
-            while (picker.Visible)
-                await Task.Delay(200);
+            // Wait for picker to close via TaskCompletionSource
+            bool confirmed = await ScreenSharePickerWindow.PickerTcs!.Task;
 
-            if (!ScreenSharePickerResult.Confirmed)
+            if (!confirmed || !ScreenSharePickerResult.Confirmed)
             {
                 ScreenShareBtn.IsChecked = false;
                 return;
