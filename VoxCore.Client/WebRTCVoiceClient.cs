@@ -108,13 +108,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         };
 
         var audioTrack = new MediaStreamTrack(
-            new SDPAudioVideoMediaFormat(
-                SDPMediaTypesEnum.audio,
-                111,
-                "opus",
-                48000,
-                2,
-                "minptime=10;useinbandfec=1"));
+            new AudioFormat(AudioCodecsEnum.OPUS, 111, 48000, 2, "minptime=10;useinbandfec=1"));
         _pc.addTrack(audioTrack);
 
         _pc.OnRtpPacketReceived += (ep, media, rtpPkt) =>
@@ -175,7 +169,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         _playback.Play();
 
         var offer = _pc.createOffer(null);
-        await _pc.setLocalDescription(offer);
+        _pc.setLocalDescription(offer);
 
         StatusChanged?.Invoke("ожидание ICE candidates...");
 
@@ -183,7 +177,7 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         var (answerSdp, _) = await _api.WebRTCOfferAsync(_roomId, offer.sdp);
         var answer = new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = answerSdp };
-        await _pc.setRemoteDescription(answer);
+        _pc.setRemoteDescription(answer);
 
         StatusChanged?.Invoke("WebRTC подключен (Opus 128kbps + RNNoise)");
     }
