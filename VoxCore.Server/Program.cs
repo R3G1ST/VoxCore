@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using SIPSorcery.Net;
+using SIPSorceryMedia.Abstractions;
 using VoxCore.Server;
 
 const ushort VoicePort = 9987;
@@ -455,8 +456,6 @@ static string WebRTCJoin(JsonElement req, Store store, User user, ConcurrentDict
     var room = webrtcRooms.GetOrAdd(roomId, _ => new ConcurrentDictionary<int, RTCPeerConnection>());
     if (room.ContainsKey(user.Id)) return Error("уже в комнате");
 
-    var pc = CreatePeerConnection(roomId, user, webrtcRooms);
-    room[user.Id] = pc;
     var peers = room.Keys.Where(id => id != user.Id).ToList();
     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC JOIN  room={roomId} user={user.Name} peers={peers.Count}");
     return Ok(new { peers, roomId });
@@ -482,14 +481,20 @@ static string WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDic
     var sdp = sdpEl.GetString() ?? "";
     var roomId = GetString(req, "room") ?? "";
     if (!webrtcRooms.TryGetValue(roomId, out var room)) return Error("комната не найдена");
-    if (!room.TryGetValue(user.Id, out var pc)) return Error("не в комнате");
+
+    var pc = CreatePeerConnection(roomId, user, webrtcRooms);
+    room[user.Id] = pc;
+
+    var audioTrack = new MediaStreamTrack(
+        new AudioFormat(AudioCodecsEnum.OPUS, 111, 48000, 2, "minptime=10;useinbandfec=1"));
+    pc.addTrack(audioTrack);
 
     var offer = new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp };
     var result = pc.setRemoteDescription(offer);
     if (result != SetDescriptionResultEnum.OK) return Error($"setRemoteDescription failed: {result}");
 
     var answer = pc.createAnswer(null);
-    pc.setLocalDescription(answer).Wait();
+    pc.setLocalDescription(answer);
 
     var deadline = DateTime.UtcNow.AddSeconds(5);
     while (DateTime.UtcNow < deadline && pc.iceConnectionState != RTCIceConnectionState.connected && pc.iceConnectionState != RTCIceConnectionState.failed)
@@ -497,8 +502,8 @@ static string WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDic
         Thread.Sleep(100);
     }
 
-    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC OFFER  room={roomId} user={user.Name} ice={pc.iceConnectionState}");
     var peers = room.Keys.Where(id => id != user.Id).ToList();
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC OFFER  room={roomId} user={user.Name} ice={pc.iceConnectionState} peers={peers.Count}");
     return Ok(new { sdp = pc.localDescription.sdp, peers });
 }
 
