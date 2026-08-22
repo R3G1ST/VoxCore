@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
             var host = _settings.Server.Split(':')[0];
             _webrtc = new WebRTCVoiceClient(api, host);
             _webrtc.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
+            _webrtc.MembersChanged += (names) => DispatcherQueue.TryEnqueue(() => { _members.Clear(); foreach (var n in names) _members.Add(new MemberItem(n)); });
         }
         catch { _useWebRtc = false; }
 

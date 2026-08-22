@@ -236,13 +236,16 @@ public sealed class ApiClient
         return msgs;
     }
 
-    public async Task<(List<int> Peers, string RoomId)> WebRTCJoinAsync(int channelId)
+    public async Task<(List<int> Peers, List<string> Names, string RoomId)> WebRTCJoinAsync(int channelId)
     {
         var r = await CallAsync(new { op = "webrtc_join", token = Token, channel = channelId });
         if (!r.Ok) throw new ApiException(r.Err ?? "не удалось подключиться к комнате");
         var peers = r.Data.GetProperty("peers").EnumerateArray().Select(x => x.GetInt32()).ToList();
         var roomId = r.Data.GetProperty("roomId").GetString() ?? "";
-        return (peers, roomId);
+        List<string> names = [];
+        if (r.Data.TryGetProperty("names", out var namesEl))
+            names = namesEl.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+        return (peers, names, roomId);
     }
 
     public async Task WebRTCLeaveAsync(string roomId)
