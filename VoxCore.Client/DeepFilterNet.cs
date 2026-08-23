@@ -15,6 +15,9 @@ public sealed class DeepFilterNet : IDisposable
     private unsafe delegate*<nint, void> _cleanupFn;
 
     private readonly float[] _ctrlPorts = new float[6];
+    private readonly float[] _inChunk = new float[480];
+    private readonly float[] _outChunk = new float[480];
+    private float[] _carry = [];
 
     public int HopSize { get; } = 480;
     public bool IsLoaded => _handle != 0;
@@ -98,25 +101,56 @@ public sealed class DeepFilterNet : IDisposable
 
         Activate();
 
-        Span<float> inBuf = new float[sampleCount];
-        input[..sampleCount].CopyTo(inBuf);
-        Span<float> outBuf = new float[sampleCount];
+        // Плагин принимает строго hop 480 (10мс @48кГц). Вызов run с другим
+        // размером уводит его в медленный путь (RTF ~3) и выдаёт мусор.
+        const int hop = 480;
 
-        fixed (float* pIn = inBuf, pOut = outBuf, pCtrl = _ctrlPorts)
+        // Склейка: остаток прошлого вызова + новые сэмплы
+        float[] work = new float[_carry.Length + sampleCount];
+        _carry.CopyTo(work, 0);
+        input[..sampleCount].CopyTo(work.AsSpan(_carry.Length));
+        int workLen = work.Length;
+
+        int off = 0;
+        fixed (float* pCtrl = _ctrlPorts)
         {
-            _connectPortFn(_handle, 0, pIn);
-            _connectPortFn(_handle, 1, pOut);
-            _connectPortFn(_handle, 2, pCtrl);
-            _connectPortFn(_handle, 3, pCtrl + 1);
-            _connectPortFn(_handle, 4, pCtrl + 2);
-            _connectPortFn(_handle, 5, pCtrl + 3);
-            _connectPortFn(_handle, 6, pCtrl + 4);
-            _connectPortFn(_handle, 7, pCtrl + 5);
-
-            _runFn(_handle, (uint)sampleCount);
+            while (off + hop <= workLen)
+            {
+                work.AsSpan(off, hop).CopyTo(_inChunk);
+                fixed (float* pIn = _inChunk, pOut = _outChunk)
+                {
+                    _connectPortFn(_handle, 0, pIn);
+                    _connectPortFn(_handle, 1, pOut);
+                    _connectPortFn(_handle, 2, pCtrl);
+                    _connectPortFn(_handle, 3, pCtrl + 1);
+                    _connectPortFn(_handle, 4, pCtrl + 2);
+                    _connectPortFn(_handle, 5, pCtrl + 3);
+                    _connectPortFn(_handle, 6, pCtrl + 4);
+                    _connectPortFn(_handle, 7, pCtrl + 5);
+                    _runFn(_handle, (uint)hop);
+                }
+                _outChunk.CopyTo(work.AsSpan(off, hop));
+                off += hop;
+            }
         }
 
-        outBuf.CopyTo(output);
+        // Отдаём первые sampleCount обработанных сэмплов
+        int outLen = Math.Min(sampleCount, off);
+        work.AsSpan(0, outLen).CopyTo(output[..outLen]);
+        if (outLen < sampleCount)
+            output[outLen..sampleCount].Clear();
+
+        // Хвост (неполный chunk) — на следующий вызов
+        int tail = workLen - off;
+        if (tail > 0)
+        {
+            _carry = new float[tail];
+            work.AsSpan(off, tail).CopyTo(_carry);
+        }
+        else if (_carry.Length > 0)
+        {
+            _carry = [];
+        }
     }
 
     public void Process(ReadOnlySpan<short> input, Span<short> output, int sampleCount)

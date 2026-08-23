@@ -214,7 +214,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         _playback = new WaveOutEvent { Volume = Math.Clamp(_volume / 100f, 0f, 1f) };
         _playbackBuffer = new BufferedWaveProvider(new WaveFormat(SampleRate, 16, Channels))
         {
-            BufferDuration = TimeSpan.FromMilliseconds(80),
+            BufferDuration = TimeSpan.FromMilliseconds(200),
             DiscardOnBufferOverflow = true
         };
         _playback.Init(_playbackBuffer);
