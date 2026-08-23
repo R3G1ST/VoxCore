@@ -45,6 +45,10 @@ public sealed class WebRTCVoiceClient : IDisposable
     private int _rmsIdx;
 
     public bool IsConnected => _pc?.connectionState == RTCPeerConnectionState.connected;
+    public bool IsDeepFilterLoaded => _deepFilter?.IsLoaded == true;
+    public int BitrateKbps => (_encoder?.Bitrate ?? 0) / 1000;
+    public bool IsFec => _encoder?.UseInbandFEC == true;
+    public bool IsDtx => _encoder?.UseDTX == true;
     public string RoomId => _roomId;
     public bool MicMuted { get; set; }
     public bool PlaybackMuted { get; set; }
@@ -67,6 +71,16 @@ public sealed class WebRTCVoiceClient : IDisposable
     public event Action<string>? SpeakerStopped;
     public event Action<IReadOnlyList<string>>? MembersChanged;
 
+    internal static void Log(string msg)
+    {
+        try
+        {
+            File.AppendAllText(Path.Combine(Path.GetTempPath(), "voxcore-client.log"),
+                $"[{DateTime.Now:HH:mm:ss}] {msg}\n");
+        }
+        catch { }
+    }
+
     public WebRTCVoiceClient(ApiClient api, string serverHost)
     {
         _api = api;
@@ -82,7 +96,14 @@ public sealed class WebRTCVoiceClient : IDisposable
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
         try
         {
-            var dfPath = Path.Combine(AppContext.BaseDirectory, "native", "deep_filter_ladspa.dll");
+            // DLL вне каталога приложения: %LOCALAPPDATA%\VoxCore\native (инсталлер кладёт туда),
+            // fallback — native/ рядом с exe. В корне приложения DLL быть НЕ должно:
+            // его наличие рядом с exe ломает старт WinUI (AccessViolation в Application.Start).
+            var dfLocal = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "VoxCore", "native", "deep_filter_ladspa.dll");
+            var dfApp = Path.Combine(AppContext.BaseDirectory, "native", "deep_filter_ladspa.dll");
+            var dfPath = File.Exists(dfLocal) ? dfLocal : dfApp;
             _deepFilter = new DeepFilterNet(dfPath, SampleRate);
             Console.WriteLine("[Voice] DeepFilterNet3 loaded");
         }
@@ -95,6 +116,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     public async Task ConnectAsync(int channelId)
     {
         _channelId = channelId;
+        Log($"ConnectAsync channel={channelId}");
         StatusChanged?.Invoke("РїРѕРґРєР»СЋС‡РµРЅРёРµ Рє WebRTC...");
 
         var (peers, names, roomId) = await _api.WebRTCJoinAsync(channelId);
@@ -170,6 +192,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         _pc.onconnectionstatechange += (state) =>
         {
             StatusChanged?.Invoke($"WebRTC: {state}");
+            Log($"conn state: {state}, ice={_pc?.iceConnectionState}");
             if (state == RTCPeerConnectionState.connected)
             {
                 connectedTcs.TrySetResult(true);
@@ -208,9 +231,11 @@ public sealed class WebRTCVoiceClient : IDisposable
         StatusChanged?.Invoke("РѕС‚РїСЂР°РІРєР° offer, РѕР¶РёРґР°РЅРёРµ ICE...");
 
         var (answerSdp, _) = await _api.WebRTCOfferAsync(_roomId, offer.sdp);
+        Log($"answer received ({answerSdp.Length} chars)");
         StatusChanged?.Invoke($"answer SDP ({answerSdp.Length} chars), setting remote...");
         var answer = new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = answerSdp };
         var res = _pc.setRemoteDescription(answer);
+        Log($"setRemoteDescription: {res}");
         StatusChanged?.Invoke($"setRemoteDescription: {res}, ice={_pc.iceConnectionState}, gathering={_pc.iceGatheringState}");
 
         StatusChanged?.Invoke("offer СѓСЃС‚Р°РЅРѕРІР»РµРЅ, РѕР¶РёРґР°РЅРёРµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ...");
@@ -218,10 +243,12 @@ public sealed class WebRTCVoiceClient : IDisposable
         var completed = await Task.WhenAny(connectedTcs.Task, Task.Delay(15000));
         if (completed == connectedTcs.Task && await connectedTcs.Task)
         {
+            Log("WebRTC connected");
             StatusChanged?.Invoke("WebRTC РїРѕРґРєР»СЋС‡РµРЅ (Opus 256kbps + AGC + DeepFilterNet3)");
         }
         else
         {
+            Log($"WebRTC ICE failed: ice={_pc?.iceConnectionState}, conn={_pc?.connectionState}");
             throw new Exception("WebRTC ICE failed");
         }
     }

@@ -1,0 +1,21 @@
+<Project>
+  <Target Name="PatchXamlCompilerCulture" BeforeTargets="XamlCompile" Condition="'$(MSBuildRuntimeType)' == 'Core'">
+    <PropertyGroup>
+      <XamlCompilerDir>$(NuGetPackageRoot)microsoft.windowsappsdk.winui\2.3.6\tools\net472</XamlCompilerDir>
+      <XamlCompilerExe>$(XamlCompilerDir)\XamlCompiler.exe</XamlCompilerExe>
+      <XamlCompilerBackup>$(XamlCompilerDir)\XamlCompiler.original.exe</XamlCompilerBackup>
+    </PropertyGroup>
+
+    <!-- If backup doesn't exist, save original -->
+    <Copy SourceFiles="$(XamlCompilerExe)" DestinationFiles="$(XamlCompilerBackup)"
+          Condition="!Exists('$(XamlCompilerBackup)')" />
+
+    <!-- Remove ru-RU satellite directory -->
+    <RemoveDir Directories="$(XamlCompilerDir)\ru-RU" Condition="Exists('$(XamlCompilerDir)\ru-RU')" />
+
+    <!-- Copy our wrapper (which has correct resources) over XamlCompiler.exe -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)XamlCompilerPatch.exe"
+          DestinationFiles="$(XamlCompilerExe)"
+          Condition="Exists('$(MSBuildThisFileDirectory)XamlCompilerPatch.exe')" />
+  </Target>
+</Project>

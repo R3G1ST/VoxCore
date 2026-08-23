@@ -1,0 +1,6 @@
+﻿<!-- VoxCore XAML Compiler Culture Fix - Patches XamlCompiler to use en-US culture -->
+<Project>
+  <PropertyGroup>
+    <XamlCompilerExePath Condition="'$(XamlCompilerExePath)' != ''">$(MSBuildThisFileDirectory)XamlCompilerWrapper.exe</XamlCompilerExePath>
+  </PropertyGroup>
+</Project>

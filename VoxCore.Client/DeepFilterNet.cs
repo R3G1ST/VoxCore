@@ -36,13 +36,38 @@ public sealed class DeepFilterNet : IDisposable
         }
         if (descPtr == 0) throw new Exception("Mono descriptor (index 0) not found");
 
+        // Раскладка LADSPA_Descriptor у этой сборки содержит доп. поле (Name) после
+        // Properties, поэтому функции сдвинуты на +1 слот относительно классики.
+        // Авто-детект: ищем instantiate — указатель кода внутри образа модуля.
         unsafe
         {
-            _instantiateFn = (delegate*<nint, nint, nint>)Marshal.ReadIntPtr(descPtr, IntPtr.Size * 10);
-            _connectPortFn = (delegate*<nint, uint, float*, void>)Marshal.ReadIntPtr(descPtr, IntPtr.Size * 11);
-            _activateFn = (delegate*<nint, void>)Marshal.ReadIntPtr(descPtr, IntPtr.Size * 12);
-            _runFn = (delegate*<nint, uint, void>)Marshal.ReadIntPtr(descPtr, IntPtr.Size * 13);
-            _cleanupFn = (delegate*<nint, void>)Marshal.ReadIntPtr(descPtr, IntPtr.Size * 15);
+            const nint ModuleSpan = (nint)96 * 1024 * 1024;
+            nint inst = 0, conn = 0, act = 0, runF = 0, cleanup = 0;
+            for (int i = 8; i <= 14; i++)
+            {
+                var cand = Marshal.ReadIntPtr(descPtr, IntPtr.Size * i);
+                if (cand >= _libHandle && cand < _libHandle + ModuleSpan)
+                {
+                    inst = Marshal.ReadIntPtr(descPtr, IntPtr.Size * i);
+                    conn = Marshal.ReadIntPtr(descPtr, IntPtr.Size * (i + 1));
+                    act = Marshal.ReadIntPtr(descPtr, IntPtr.Size * (i + 2));
+                    runF = Marshal.ReadIntPtr(descPtr, IntPtr.Size * (i + 3));
+                    for (int k = i + 7; k >= i + 4; k--)
+                    {
+                        var p = Marshal.ReadIntPtr(descPtr, IntPtr.Size * k);
+                        if (p != 0) { cleanup = p; break; }
+                    }
+                    break;
+                }
+            }
+            if (inst == 0)
+                throw new Exception("LADSPA descriptor: instantiate not found (unknown layout)");
+
+            _instantiateFn = (delegate*<nint, nint, nint>)inst;
+            _connectPortFn = (delegate*<nint, uint, float*, void>)conn;
+            _activateFn = (delegate*<nint, void>)act;
+            _runFn = (delegate*<nint, uint, void>)runF;
+            _cleanupFn = (delegate*<nint, void>)cleanup;
 
             _handle = _instantiateFn(descPtr, (nint)sampleRate);
         }

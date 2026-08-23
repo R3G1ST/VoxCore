@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
         {
             var host = _settings.Server.Split(':')[0];
             _webrtc = new WebRTCVoiceClient(api, host);
+            _webrtc.AgcEnabled = _settings.AgcEnabled;
             _webrtc.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
             _webrtc.MembersChanged += (names) => DispatcherQueue.TryEnqueue(() => { _members.Clear(); foreach (var n in names) _members.Add(new MemberItem(n)); });
         }
@@ -327,12 +328,14 @@ public sealed partial class MainWindow : Window
                 else
                 {
                     StatusText.Text = "WebRTC timeout, fallback to UDP";
+                    WebRTCVoiceClient.Log("timeout 15s, fallback to UDP");
                     _webrtc.Disconnect();
                 }
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
+                WebRTCVoiceClient.Log($"failed: {ex.Message}, fallback to UDP");
                 _webrtc.Disconnect();
             }
         }

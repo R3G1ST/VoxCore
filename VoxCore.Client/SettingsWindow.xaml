@@ -13,77 +13,201 @@
             <TextBlock Text="НАСТРОЙКИ" FontFamily="Cascadia Code" FontSize="16" FontWeight="Bold" Foreground="White" />
         </Border>
 
-        <StackPanel Grid.Row="1" Padding="24,20" Spacing="20">
-            <StackPanel Spacing="8">
-                <TextBlock Text="МИКРОФОН" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
-                <ComboBox x:Name="MicCombo" MinWidth="300" HorizontalAlignment="Left" />
-            </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="24,20" Spacing="20">
 
-            <StackPanel Spacing="8">
-                <TextBlock Text="ГРОМКОСТЬ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Slider x:Name="GainSlider" Minimum="0" Maximum="200" StepFrequency="5" />
-                    <TextBlock x:Name="GainText" Grid.Column="1" MinWidth="44" Text="100%"
-                               FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1"
-                               VerticalAlignment="Center" HorizontalAlignment="Right" />
-                </Grid>
-            </StackPanel>
+                <!-- VOICE PIPELINE STATUS -->
+                <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="ГОЛОСОВОЙ PIPELINE" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
 
-            <StackPanel Spacing="8">
-                <TextBlock Text="ШУМОПОДАВЛЕНИЕ (RNNoise)" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
-                <ToggleSwitch x:Name="NsToggle" OnContent="вкл" OffContent="выкл" />
-            </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="OpusDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Opus 48kHz моно" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="OpusStatus" Text="256 kbps" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>
+                        </Grid>
 
-            <StackPanel Spacing="8">
-                <TextBlock Text="ГРОМКОСТЬ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" StepFrequency="5" />
-                    <TextBlock x:Name="VolumeText" Grid.Column="1" MinWidth="44" Text="80%"
-                               FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1"
-                               VerticalAlignment="Center" HorizontalAlignment="Right" />
-                </Grid>
-            </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="RnnoiseDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="RNNoise шумоподавление" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="RnnoiseStatus" Text="активно" FontFamily="Cascadia Code" FontSize="11" Foreground="#3ba55d" VerticalAlignment="Center"/>
+                        </Grid>
 
-            <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="ТЕСТ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
-                    <CheckBox x:Name="LoopbackCheck" Content="слушать себя" FontFamily="Cascadia Code"
-                              FontSize="12" Foreground="#dbdee1" />
-                    <Button x:Name="TestBtn" Content="НАЧАТЬ ТЕСТ" Style="{ThemeResource VcSmallButton}"
-                            HorizontalAlignment="Stretch" Click="TestBtn_Click" />
-                    <Border x:Name="MeterTrack" Height="14" CornerRadius="7" Background="#313338">
-                        <Border x:Name="MeterFill" Width="0" CornerRadius="7" Background="#3ba55d"
-                                HorizontalAlignment="Left" />
-                    </Border>
-                    <TextBlock x:Name="TestInfo" Text="" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="DfDot" Width="8" Height="8" Fill="#ed4245" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="DeepFilterNet3 (Deep Noise Suppression)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="DfStatus" Text="не загружен" FontFamily="Cascadia Code" FontSize="11" Foreground="#ed4245" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="AgcDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="AGC автокомпрессия" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="AgcStatus" Text="целевая 10%, макс x8" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="FecDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="FEC Forward Error Correction" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="FecStatus" Text="активно" FontFamily="Cascadia Code" FontSize="11" Foreground="#3ba55d" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="DtxDot" Width="8" Height="8" Fill="#faa61a" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="DTX (Transmission Optimization)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="DtxStatus" Text="WebRTC" FontFamily="Cascadia Code" FontSize="11" Foreground="#faa61a" VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- CONNECTION STATUS -->
+                <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="ПОДКЛЮЧЕНИЕ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="ConnDot" Width="8" Height="8" Fill="#ed4245" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Протокол" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="ConnProtocol" Text="не подключен" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="IceDot" Width="8" Height="8" Fill="#ed4245" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="ICE соединение" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="IceStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="TurnDot" Width="8" Height="8" Fill="#ed4245" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="TURN сервер" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="TurnStatus" Text="194.31.204.5:3478" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- MIC CONTROL -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="МИКРОФОН" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    <ComboBox x:Name="MicCombo" MinWidth="300" HorizontalAlignment="Left" />
                 </StackPanel>
-            </Border>
 
-            <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="ОБНОВЛЕНИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
-                    <TextBlock x:Name="VerText" Text="" FontFamily="Cascadia Code" FontSize="13"
-                               FontWeight="Bold" Foreground="#dbdee1" />
-                    <TextBlock x:Name="UpdateStatus" Text="нажми «ПРОВЕРИТЬ ОБНОВЛЕНИЯ»" FontFamily="Cascadia Code"
-                               FontSize="11" Foreground="#949ba4" TextWrapping="Wrap" />
-                    <Button x:Name="CheckUpdateBtn" Content="ПРОВЕРИТЬ ОБНОВЛЕНИЯ" Style="{ThemeResource VcSmallButton}"
-                            HorizontalAlignment="Stretch" Click="CheckUpdateBtn_Click" />
-                    <Button x:Name="InstallUpdateBtn" Content="СКАЧАТЬ И УСТАНОВИТЬ" Style="{ThemeResource VcSmallButton}"
-                            Background="#3ba55d" HorizontalAlignment="Stretch" Visibility="Collapsed"
-                            Click="InstallUpdateBtn_Click" />
-                    <ProgressBar x:Name="UpdateProgress" Maximum="1" Minimum="0" Value="0"
-                                 Visibility="Collapsed" />
+                <StackPanel Spacing="8">
+                    <TextBlock Text="ГРОМКОСТЬ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="GainSlider" Minimum="0" Maximum="200" StepFrequency="5" />
+                        <TextBlock x:Name="GainText" Grid.Column="1" MinWidth="44" Text="100%"
+                                   FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right" />
+                    </Grid>
                 </StackPanel>
-            </Border>
-        </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="ШУМОПОДАВЛЕНИЕ (RNNoise)" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    <ToggleSwitch x:Name="NsToggle" OnContent="вкл" OffContent="выкл" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="AGC АВТОКОМПРЕССИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    <ToggleSwitch x:Name="AgcToggle" OnContent="вкл" OffContent="выкл" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="ГРОМКОСТЬ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" StepFrequency="5" />
+                        <TextBlock x:Name="VolumeText" Grid.Column="1" MinWidth="44" Text="80%"
+                                   FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- MIC TEST -->
+                <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="ТЕСТ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                        <CheckBox x:Name="LoopbackCheck" Content="слушать себя" FontFamily="Cascadia Code"
+                                  FontSize="12" Foreground="#dbdee1" />
+                        <Button x:Name="TestBtn" Content="НАЧАТЬ ТЕСТ" Style="{ThemeResource VcSmallButton}"
+                                HorizontalAlignment="Stretch" Click="TestBtn_Click" />
+                        <Border x:Name="MeterTrack" Height="14" CornerRadius="7" Background="#313338">
+                            <Border x:Name="MeterFill" Width="0" CornerRadius="7" Background="#3ba55d"
+                                    HorizontalAlignment="Left" />
+                        </Border>
+                        <TextBlock x:Name="TestInfo" Text="" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                    </StackPanel>
+                </Border>
+
+                <!-- UPDATES -->
+                <Border Background="#1e1f22" CornerRadius="10" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="ОБНОВЛЕНИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
+                        <TextBlock x:Name="VerText" Text="" FontFamily="Cascadia Code" FontSize="13"
+                                   FontWeight="Bold" Foreground="#dbdee1" />
+                        <TextBlock x:Name="UpdateStatus" Text="нажми «ПРОВЕРИТЬ ОБНОВЛЕНИЯ»" FontFamily="Cascadia Code"
+                                   FontSize="11" Foreground="#949ba4" TextWrapping="Wrap" />
+                        <Button x:Name="CheckUpdateBtn" Content="ПРОВЕРИТЬ ОБНОВЛЕНИЯ" Style="{ThemeResource VcSmallButton}"
+                                HorizontalAlignment="Stretch" Click="CheckUpdateBtn_Click" />
+                        <Button x:Name="InstallUpdateBtn" Content="СКАЧАТЬ И УСТАНОВИТЬ" Style="{ThemeResource VcSmallButton}"
+                                Background="#3ba55d" HorizontalAlignment="Stretch" Visibility="Collapsed"
+                                Click="InstallUpdateBtn_Click" />
+                        <ProgressBar x:Name="UpdateProgress" Maximum="1" Minimum="0" Value="0"
+                                     Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"
                     Padding="0,0,20,20">

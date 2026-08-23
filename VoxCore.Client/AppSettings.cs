@@ -12,6 +12,7 @@ public sealed class AppSettings
     public double MicGain { get; set; } = 100.0;
     public bool OpenMic { get; set; }
     public bool NoiseSuppression { get; set; } = true;
+    public bool AgcEnabled { get; set; } = true;
     public string RoomPassword { get; set; } = "";
     public string? Token { get; set; }
     public int UserId { get; set; }
