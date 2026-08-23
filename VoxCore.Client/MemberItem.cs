@@ -24,10 +24,12 @@ public sealed class MemberItem : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSpeaking)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakingText)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakingBrush)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakingBorderVisibility)));
         }
     }
     public string SpeakingText => _isSpeaking ? "●" : "";
     public Brush SpeakingBrush => _isSpeaking ? MainWindow.BrushFromHex("#3ba55d") : MainWindow.BrushFromHex("#00000000");
+    public Visibility SpeakingBorderVisibility => _isSpeaking ? Visibility.Visible : Visibility.Collapsed;
 
     private bool _isScreenSharing;
     public bool IsScreenSharing

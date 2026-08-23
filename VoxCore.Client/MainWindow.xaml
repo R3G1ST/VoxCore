@@ -511,7 +511,7 @@
                                     </Border>
                                     <Border Width="12" Height="12" CornerRadius="6"
                                             VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,-2,-2"
-                                            Visibility="{Binding IsSpeaking, Converter={StaticResource BoolToVis}}">
+                                            Visibility="{Binding SpeakingBorderVisibility}">
                                         <Border.Background>
                                             <SolidColorBrush Color="#3ba55d" />
                                         </Border.Background>

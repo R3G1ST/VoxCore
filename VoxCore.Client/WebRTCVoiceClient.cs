@@ -82,7 +82,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
         try
         {
-            var dfPath = Path.Combine(AppContext.BaseDirectory, "deep_filter_ladspa.dll");
+            var dfPath = Path.Combine(AppContext.BaseDirectory, "native", "deep_filter_ladspa.dll");
             _deepFilter = new DeepFilterNet(dfPath, SampleRate);
             Console.WriteLine("[Voice] DeepFilterNet3 loaded");
         }
