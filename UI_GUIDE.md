@@ -2,6 +2,12 @@
 
 ## 1. Быстрый старт
 
+### Что установить (один раз)
+1. **.NET 8 SDK** — https://dotnet.microsoft.com/download/dotnet/8.0
+2. **Visual Studio 2022** с workload «Разработка приложений для Windows» (или Rider)
+3. Больше ничего — WindowsAppSDK и все пакеты подтянутся из NuGet
+
+### Сборка
 ```bash
 # Клонируй репозиторий
 git clone https://github.com/R3G1ST/VoxCore.git
@@ -10,9 +16,20 @@ cd VoxCore
 # Переключись на ветку ui
 git checkout ui
 
-# Открой в Visual Studio 2022
-# (или Rider, но лучше VS — WinUI 3 лучше поддерживается)
+# Сборка и запуск
+dotnet build VoxCore.Client/VoxCore.Client.csproj -p:Platform=x64 -c Release
+VoxCore.Client\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\VoxCore.Client.exe
 ```
+
+> ⚠️ **Известный баг WinUI (WMC9999)** уже исправлен автоматически: `Directory.Build.targets`
+> подменяет XAML-компилятор на wrapper из `build-tools/` при первой сборке.
+> Ничего делать не нужно — если сборка прошла, всё работает.
+
+> 💡 **DeepFilterNet3** (нейро-шумодав) не обязателен для UI-работы. Если нужен:
+> скопируй `VoxCore.Client/deep_filter_ladspa.dll` в `%LOCALAPPDATA%\VoxCore\native\`.
+
+### Открой в Visual Studio 2022
+# (или Rider, но лучше VS — WinUI 3 лучше поддерживается)
 
 ## 2. Структура проекта
 
@@ -252,6 +269,18 @@ git push origin ui
 # Когда фича готова — создай PR в dev
 # Или попроси backend-разработчика замержить
 ```
+
+### CI и тестирование (автоматически)
+
+После каждого `git push` в `ui`/`dev`/`main` GitHub Actions собирает проект:
+
+1. Вкладка **Actions** → workflow «Build VoxCore» → твой commit
+2. Скачай артефакт **VoxCore-client-win-x64-...** — это portable-zip с собранным клиентом
+3. Любой тестировщик распаковывает и запускает `VoxCore.Client.exe` без сборки
+   (инструкция внутри архива — `TESTERS.md`)
+
+То есть: запушил UI → через ~5 минут тестировщики тестируют готовый exe.
+Серверная сборка (linux-x64) тоже собирается автоматически тем же workflow.
 
 ## 12. Типичные ошибки
 

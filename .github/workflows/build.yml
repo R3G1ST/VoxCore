@@ -1,0 +1,56 @@
+name: Build VoxCore
+
+on:
+  push:
+    branches: [main, dev, ui, backend]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  build-client:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build (Release x64)
+        run: dotnet build VoxCore.Client/VoxCore.Client.csproj -p:Platform=x64 -c Release
+
+      - name: Publish self-contained
+        run: dotnet publish VoxCore.Client/VoxCore.Client.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o publish
+
+      - name: Pack portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path publish/redist -Force | Out-Null
+          Copy-Item VoxCore.Client/deep_filter_ladspa.dll publish/redist/
+          if (Test-Path TESTERS.md) { Copy-Item TESTERS.md publish/ }
+          Compress-Archive -Path publish/* -DestinationPath VoxCore-portable-win-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoxCore-client-win-x64-${{ github.sha }}
+          path: VoxCore-portable-win-x64.zip
+          retention-days: 30
+
+  build-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish server (linux-x64)
+        run: dotnet publish VoxCore.Server/VoxCore.Server.csproj -c Release -r linux-x64 --self-contained true -o publish-server
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoxCore-server-linux-x64-${{ github.sha }}
+          path: publish-server/
+          retention-days: 30

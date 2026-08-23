@@ -1,9 +1,16 @@
 <Project>
+  <!--
+    Фикс бага XAML-компилятора WinUI (WMC9999):
+    ResourceManager ищет ...ErrorMessages.resources, а в сборке ресурс лежит
+    без суффикса .resources. XamlCompilerWrapper.exe (build-tools/) перехватывает
+    вызов и подменяет ResourceManager на рабочий из Compiler.dll.
+    Wrapper берётся из РЕПО — сборка воспроизводима на любой машине без ручных шагов.
+  -->
   <Target Name="PatchWinUIXamlCompiler" AfterTargets="Restore" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <WinUIToolsDir>$(NuGetPackageRoot)microsoft.windowsappsdk.winui\2.3.6\tools\net472</WinUIToolsDir>
       <WinUIRuDir>$(WinUIToolsDir)\ru-RU</WinUIRuDir>
-      <WrapperSource>$(MSBuildThisFileDirectory)..\..\Temp\xaml-wrapper\XamlCompilerWrapper.exe</WrapperSource>
+      <WrapperSource>$(MSBuildThisFileDirectory)build-tools\XamlCompilerWrapper.exe</WrapperSource>
     </PropertyGroup>
     <RemoveDir Directories="$(WinUIRuDir)" Condition="Exists('$(WinUIRuDir)')" />
     <Copy SourceFiles="$(WrapperSource)" DestinationFolder="$(WinUIToolsDir)"
