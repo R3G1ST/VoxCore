@@ -1,6 +1,7 @@
 <Project>
+  <!-- Пути к SDK/инструментам — НЕ хардкодить юзерские пути: CI и чужие машины -->
   <PropertyGroup>
-    <WindowsSdkPath>C:\Program Files (x86)\Windows Kits\10\</WindowsSdkPath>
-    <GenXbfPath>C:\Users\R3G1S\.nuget\packages\microsoft.windowsappsdk.winui\2.3.6\tools\</GenXbfPath>
+    <WindowsSdkPath>$(ProgramFiles(x86))\Windows Kits\10\</WindowsSdkPath>
+    <GenXbfPath>$(UserProfile)\.nuget\packages\microsoft.windowsappsdk.winui\2.3.6\tools\</GenXbfPath>
   </PropertyGroup>
 </Project>
