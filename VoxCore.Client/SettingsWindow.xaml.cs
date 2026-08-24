@@ -78,6 +78,15 @@ public sealed partial class SettingsWindow : Window
     private void UpdateVoiceStatus()
     {
         // --- Pipeline ---
+        HpfDot.Fill = Green();
+        HpfStatus.Text = "активен";
+        HpfStatus.Foreground = Green();
+
+        var aecOn = _webrtc?.IsAecActive == true;
+        AecDot.Fill = aecOn ? Green() : Gray();
+        AecStatus.Text = aecOn ? "активен" : "нет DLL";
+        AecStatus.Foreground = aecOn ? Green() : Gray();
+
         var bitrate = _webrtc?.BitrateKbps ?? 0;
         OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "48 kHz моно";
 
@@ -106,9 +115,10 @@ public sealed partial class SettingsWindow : Window
             AgcStatus.Foreground = Gray();
         }
 
-        var fecOn = _webrtc?.IsFec == true;
+        bool dredOn = _webrtc?.IsDredActive == true;
+        bool fecOn = dredOn || _webrtc?.IsFec == true;
         FecDot.Fill = fecOn ? Green() : Gray();
-        FecStatus.Text = fecOn ? "активно" : "выключено";
+        FecStatus.Text = dredOn ? "DRED 40ms" : (fecOn ? "FEC" : "выключено");
         FecStatus.Foreground = fecOn ? Green() : Gray();
 
         var dtxOn = _webrtc?.IsDtx == true;

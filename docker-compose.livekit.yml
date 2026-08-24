@@ -1,0 +1,135 @@
+# VoxCore — LiveKit SFU (подготовка, без деплоя)
+# Сервер: Ubuntu 24.04 @ 194.31.204.5 | Docker 29.0.2 + compose v2.40.3 уже есть
+# Цель: LiveKit как основной SFU, coturn 3478 как TURN-fallback, VoxCore.Server остаётся
+#       для API 9988 (auth, rooms) + выдаёт JWT-токены LiveKit + прокси webhook.
+#
+# ВАЖНО: это файл ПОДГОТОВКИ. Деплой только вручную после ревью `docker compose config` и `nginx -t`.
+# Размещение на сервере: /opt/voxcore/docker-compose.yml (+ livekit.yaml рядом)
+#   затем: docker compose up -d livekit
+#
+# Порты на хосте ДО/ПОСЛЕ:
+#   ДО:  9987/udp VoxCore.Server relay, 9988/tcp API, 3478 tcp/udp coturn,
+#        5349 tcp/udp coturn TLS, 9101/tcp Prometheus, 80/443 nginx
+#   ПОСЛЕ: + 7880/tcp LiveKit HTTP+WS, 7881/tcp LiveKit HTTPS+WSS (опционально),
+#             50000-50100/udp LiveKit RTP (100 портов = ~50 участников OPUS only,
+#             для видео бери 50000-60000 но тогда пересечение с coturn!)
+#             7882/tcp LiveKit TURN встроенный (выключен, используем host coturn)
+#
+# Пересечение UDP-портов: coturn host использует 49152-65535 (см. /etc/turnserver.conf).
+#   LiveKit RTP 50000-50100 попадает в этот диапазон -> конкуренция за порт возможна.
+#   Решения (выбери одно):
+#   A) Оставить как есть — вероятность коллизии мала (оба берут случайный порт из диапазона).
+#   B) Сузить coturn: min-port=49152 max-port=49999, LiveKit 50000-51000 (рекомендуется).
+#   C) Оставить coturn 49152-65535, LiveKit 60001-61000 (выше диапазона coturn, но нужен firewall).
+#   В этом compose выбран A с комментарием как перейти на B.
+
+name: voxcore-livekit
+
+services:
+  # ──────────────────────────────────────────────────────────────────
+  # LiveKit SFU — основной медиа-сервер
+  # Образ: livekit/livekit-server:latest (проверен: v1.13.5, 84 MB)
+  # Документация: https://docs.livekit.io/home/self-hosting/deployment
+  # ──────────────────────────────────────────────────────────────────
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    restart: unless-stopped
+    # Для WebRTC нужен host network ИЛИ проброс UDP-диапазона.
+    # Вариант 1 (простой, рекомендуется для этого сервера 961 MiB): host network
+    #   — убирает NAT внутри Docker, меньше latency, но занимает порты хоста напрямую.
+    # Вариант 2 (bridge) — оставить ports как ниже, нужен + network_mode bridge.
+    # Сейчас выбран bridge с явными портами чтобы не конфликтовать с существующим coturn host.
+    # Если будут проблемы с ICE (host candidate 172.x), переключи на network_mode: host
+    # и закомментируй секцию ports.
+    # network_mode: host
+    ports:
+      - "7880:7880/tcp"   # LiveKit HTTP + WS signalling (клиенты подключаются сюда)
+      - "7881:7881/tcp"   # LiveKit HTTPS/WSS (если терминируешь TLS в nginx, можно не публиковать)
+      - "50000-50100:50000-50100/udp"  # RTP/RTCP. Для 2-10 чел OPUS хватит 100 портов (1 порт = 1 peer).
+                                      # Для экрана/видео расширь до 50000-60000 (10000 портов).
+                                      # ПРИМЕЧАНИЕ: каждый участник = 1 UDP порт на сервере.
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      # Ключи можно хранить в файле (не коммитить!): раскомментируй если используешь key-file
+      # - ./keys.txt:/etc/keys.txt:ro
+    command: --config /etc/livekit.yaml
+    environment:
+      # Альтернатива livekit.yaml — задать всё через env. Оставлено как пример:
+      # LIVEKIT_KEYS в формате "APIKey: APISecret" (разделитель двоеточие)
+      # Сгенерировано: docker run --rm livekit/livekit-server generate-keys
+      # Ниже — DEV-ключи, ПЕРЕГЕНЕРИРУЙ для продакшена!
+      - LIVEKIT_KEYS=devkey: devsecret_voxcore_32chars_min_please_change_me_123
+      # Внешний IP который LiveKit рекламирует в ICE candidate (обязательно!)
+      - NODE_IP=194.31.204.5
+      # Диапазон UDP (должен совпадать с ports выше и livekit.yaml)
+      - UDP_PORT=50000-50100
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7880/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    # Redis не нужен для одного узла (standalone). Для кластера добавь:
+    # depends_on: [redis]
+    # и в livekit.yaml: redis: { address: redis:6379 }
+
+  # ──────────────────────────────────────────────────────────────────
+  # Coturn — оставляем HOST coturn (systemd, уже active на 3478).
+  # Docker-версия ниже — ЗАКОММЕНТИРОВАНА, нужна только если хочешь
+  # перенести TURN в Docker и освободить host. Тогда останови host:
+  #   systemctl stop coturn && systemctl disable coturn
+  # и раскомментируй этот сервис.
+  # ──────────────────────────────────────────────────────────────────
+  # coturn:
+  #   image: coturn/coturn:latest
+  #   container_name: coturn
+  #   restart: unless-stopped
+  #   network_mode: host  # TURN требует host для relay
+  #   volumes:
+  #     - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+  #   command: -c /etc/coturn/turnserver.conf
+
+  # ──────────────────────────────────────────────────────────────────
+  # Redis — опционально для масштабирования LiveKit в кластер
+  # Сейчас НЕ нужен (1 нода). Раскомментируй если планируешь 2+ LiveKit ноды.
+  # ──────────────────────────────────────────────────────────────────
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   ports: ["127.0.0.1:6379:6379"]
+  #   volumes: ["redis-data:/data"]
+  #   command: redis-server --appendonly yes
+
+  # ──────────────────────────────────────────────────────────────────
+  # VoxCore.Server — остаётся на хосте (systemd /opt/voxcore/voxcore-server-linux).
+  # Не докеризуем на этом этапе чтобы не трогать текущие 9987/9988 и data/.
+  # Интеграция: VoxCore.Server будет выдавать LiveKit JWT (см. ОТЧЁТ ниже).
+  # Если захочешь докеризовать — раскомментируй:
+  # ──────────────────────────────────────────────────────────────────
+  # voxcore:
+  #   build: ./voxcore-server  # нужен Dockerfile (dotnet publish linux-x64)
+  #   container_name: voxcore
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   volumes:
+  #     - /opt/voxcore/voxcore-server-linux/data:/app/data
+  #   command: /app/VoxCore.Server 9987
+
+# volumes:
+#   redis-data:
+
+# ──────────────────────────────────────────────────────────────────
+# Проверка перед деплоем (на сервере):
+#   docker compose config                    # валидация
+#   docker compose up -d livekit && docker logs -f livekit
+#   curl http://127.0.0.1:7880/              # должен ответить 404/OK (LiveKit слушает)
+#   ss -ulpn | grep 50000                    # RTP порты
+#   # Генерация прод-ключей:
+#   docker run --rm livekit/livekit-server generate-keys
+#   # и заменить LIVEKIT_KEYS в compose + в VoxCore.Server appsettings
+# ──────────────────────────────────────────────────────────────────

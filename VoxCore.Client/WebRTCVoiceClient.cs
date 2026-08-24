@@ -32,6 +32,9 @@ public sealed class WebRTCVoiceClient : IDisposable
     private IOpusDecoder? _decoder;
     private DeepFilterNet? _deepFilter;
     private SileroVad? _vad;
+    private IntPtr _opusEncNative;
+    private IntPtr _opusDecNative;
+    private bool _useNativeOpus;
     private CancellationTokenSource _cts = new();
     private volatile bool _running;
     private string _roomId = "";
@@ -44,6 +47,8 @@ public sealed class WebRTCVoiceClient : IDisposable
     private readonly Equalizer3Band _masterEq = new();
     private readonly Queue<float[]> _preroll = new();
     private bool _wasSilent = true;
+    private ApmProcessor? _apm;
+    private readonly object _apmLock = new();
 
     // --- Приём: per-speaker jitter + громкости ---
     private sealed class SpeakerJb
@@ -60,8 +65,10 @@ public sealed class WebRTCVoiceClient : IDisposable
     public bool IsConnected => _pc?.connectionState == RTCPeerConnectionState.connected;
     public bool IsDeepFilterLoaded => _deepFilter?.IsLoaded == true;
     public bool IsVadLoaded => _vad != null;
+    public bool IsAecActive => _apm != null;
     public int BitrateKbps => (_encoder?.Bitrate ?? 0) / 1000;
     public bool IsFec => _encoder?.UseInbandFEC == true;
+    public bool IsDredActive => _useNativeOpus;
     public bool IsDtx => _encoder?.UseDTX == true;
     public string RoomId => _roomId;
     public bool MicMuted { get; set; }
@@ -130,6 +137,32 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
 
+        // Native Opus 1.5.2 + DRED (опционально, fallback на Concentus)
+        try
+        {
+            _opusEncNative = Dsp.OpusNative.opus_encoder_create(SampleRate, Channels, Dsp.OpusNative.OPUS_APPLICATION_VOIP, out int encErr);
+            if (encErr == 0 && _opusEncNative != IntPtr.Zero)
+            {
+                Dsp.OpusNative.opus_encoder_ctl(_opusEncNative, Dsp.OpusNative.OPUS_SET_BITRATE_REQUEST, 64000);
+                Dsp.OpusNative.opus_encoder_ctl(_opusEncNative, Dsp.OpusNative.OPUS_SET_INBAND_FEC_REQUEST, 1);
+                Dsp.OpusNative.opus_encoder_ctl(_opusEncNative, Dsp.OpusNative.OPUS_SET_PACKET_LOSS_PERC_REQUEST, 15);
+                int dredRet = Dsp.OpusNative.opus_encoder_ctl(_opusEncNative, Dsp.OpusNative.OPUS_SET_DRED_DURATION_REQUEST, 4);
+                _opusDecNative = Dsp.OpusNative.opus_decoder_create(SampleRate, Channels, out int decErr);
+                if (decErr == 0 && dredRet == 0)
+                {
+                    _useNativeOpus = true;
+                    Log($"Native Opus {Dsp.OpusNative.GetVersion()} DRED 40ms loaded");
+                }
+                else
+                {
+                    if (_opusDecNative != IntPtr.Zero) Dsp.OpusNative.opus_decoder_destroy(_opusDecNative);
+                    Dsp.OpusNative.opus_encoder_destroy(_opusEncNative);
+                    _opusEncNative = _opusDecNative = IntPtr.Zero;
+                }
+            }
+        }
+        catch (Exception ex) { Log($"Native Opus not loaded: {ex.Message}"); }
+
         // DeepFilterNet3 — DLL только из %LOCALAPPDATA%\VoxCore\native (или native/ у exe для dev).
         try
         {
@@ -179,6 +212,9 @@ public sealed class WebRTCVoiceClient : IDisposable
         _masterEq.HighDb = settings.EqHigh;
         foreach (var kv in settings.UserVolumes)
             _userVolumes[kv.Key] = (float)Math.Clamp(kv.Value, 0.0, 2.0);
+
+        try { ApmLoader.EnsureLoaded(); _apm = new ApmProcessor(aec3: true, ns: false, agc2: false, hpf: false); Log("APM AEC3 loaded"); }
+        catch (Exception ex) { Log($"APM not loaded: {ex.Message}"); }
     }
 
     public void ApplyEq(double low, double mid, double high)
@@ -252,9 +288,15 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (media != SDPMediaTypesEnum.audio) return;
             try
             {
-                if (_decoder == null) return;
                 var pcm = new short[FrameSize];
-                int n = _decoder.Decode(rtpPkt.Payload.AsSpan(), pcm.AsSpan(), FrameSize, false);
+                int n;
+                if (_useNativeOpus && _opusDecNative != IntPtr.Zero)
+                    n = Dsp.OpusNative.opus_decode(_opusDecNative, rtpPkt.Payload, rtpPkt.Payload.Length, pcm, FrameSize, 0);
+                else
+                {
+                    if (_decoder == null) return;
+                    n = _decoder.Decode(rtpPkt.Payload.AsSpan(), pcm.AsSpan(), FrameSize, false);
+                }
                 if (n <= 0) return;
 
                 var jb = _speakers.GetOrAdd(rtpPkt.Header.SyncSource, _ => new SpeakerJb());
@@ -364,6 +406,14 @@ public sealed class WebRTCVoiceClient : IDisposable
                         (dead ??= []).Add(kv.Key);
                 }
 
+                if (_apm != null)
+                {
+                    lock (_apmLock)
+                    {
+                        try { _apm.ProcessRender20ms(mix); } catch { }
+                    }
+                }
+
                 if (!PlaybackMuted && _playbackBuffer != null)
                 {
                     for (int i = 0; i < FrameSize; i++)
@@ -412,6 +462,15 @@ public sealed class WebRTCVoiceClient : IDisposable
             // 2) MicGain
             if (MicGain != 1.0)
                 for (int i = 0; i < FrameSize; i++) frame[i] *= (float)MicGain;
+
+            // 2b) AEC3 (APM) — 20ms, после HPF, до DFN. Требует предварительного ProcessRender в миксере.
+            if (_apm != null)
+            {
+                lock (_apmLock)
+                {
+                    try { _apm.ProcessCapture20ms(frame); } catch { }
+                }
+            }
 
             // 3) DeepFilterNet3
             if (NoiseSuppression && _deepFilter != null && _deepFilter.IsLoaded)
@@ -466,12 +525,19 @@ public sealed class WebRTCVoiceClient : IDisposable
 
     private void EncodeSend(float[] frameFloat, byte[] opusBuf)
     {
-        if (_pc == null || _encoder == null) return;
+        if (_pc == null) return;
         var frameShorts = new short[FrameSize];
         for (int i = 0; i < FrameSize; i++)
             frameShorts[i] = (short)Math.Clamp((int)(frameFloat[i] * 32768f), short.MinValue, short.MaxValue);
 
-        int n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
+        int n;
+        if (_useNativeOpus && _opusEncNative != IntPtr.Zero)
+            n = Dsp.OpusNative.opus_encode(_opusEncNative, frameShorts, FrameSize, opusBuf, opusBuf.Length);
+        else
+        {
+            if (_encoder == null) return;
+            n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
+        }
         if (n > 0)
             _pc.SendAudio(FrameSize, opusBuf.AsSpan(0, n).ToArray());
     }
@@ -503,6 +569,9 @@ public sealed class WebRTCVoiceClient : IDisposable
         _decoder?.Dispose();
         _deepFilter?.Dispose();
         _vad?.Dispose();
+        _apm?.Dispose();
+        if (_opusEncNative != IntPtr.Zero) { try { Dsp.OpusNative.opus_encoder_destroy(_opusEncNative); } catch { } _opusEncNative = IntPtr.Zero; }
+        if (_opusDecNative != IntPtr.Zero) { try { Dsp.OpusNative.opus_decoder_destroy(_opusDecNative); } catch { } _opusDecNative = IntPtr.Zero; }
         _cts.Dispose();
     }
 }

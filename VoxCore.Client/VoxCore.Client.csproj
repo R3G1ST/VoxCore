@@ -13,7 +13,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.20</Version>
+    <Version>1.1.0</Version>
     <Product>VoxCore</Product>
     <AssemblyTitle>VoxCore</AssemblyTitle>
     <Description>VoxCore</Description>
@@ -27,10 +27,13 @@
     <PackageReference Include="SIPSorcery" Version="10.0.16" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
     <None Include="models\silero_vad.onnx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native\webrtc-apm.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\webrtc-apm.dll')" />
+    <None Include="native\opus.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\opus.dll')" />
   </ItemGroup>
   <Target Name="CopyPriAfterPublish" AfterTargets="Publish">
     <Copy SourceFiles="$(OutputPath)VoxCore.Client.pri" DestinationFolder="$(PublishDir)" Condition="Exists('$(OutputPath)VoxCore.Client.pri')" />
   </Target>
 </Project>
+
 
 

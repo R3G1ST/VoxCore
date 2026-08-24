@@ -38,6 +38,28 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="HpfDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="HPF 80Hz (резка гула)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="HpfStatus" Text="активен" FontFamily="Cascadia Code" FontSize="11" Foreground="#3ba55d" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="AecDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="AEC3 эхоподавление" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="AecStatus" Text="активен" FontFamily="Cascadia Code" FontSize="11" Foreground="#3ba55d" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <Ellipse x:Name="RnnoiseDot" Width="8" Height="8" Fill="#3ba55d" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Text="RNNoise шумоподавление" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="RnnoiseStatus" Text="активно" FontFamily="Cascadia Code" FontSize="11" Foreground="#3ba55d" VerticalAlignment="Center"/>
