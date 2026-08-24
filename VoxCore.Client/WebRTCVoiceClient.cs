@@ -36,6 +36,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     private IntPtr _opusDecNative;
     private bool _useNativeOpus;
     private CancellationTokenSource _cts = new();
+    private CancellationTokenSource _gccCts = new();
     private volatile bool _running;
     private string _roomId = "";
     private int _channelId;
@@ -49,6 +50,8 @@ public sealed class WebRTCVoiceClient : IDisposable
     private bool _wasSilent = true;
     private ApmProcessor? _apm;
     private readonly object _apmLock = new();
+    private long _lastRenderTicks;
+    private int _aecDelayMs = 40;
 
     // --- Приём: per-speaker jitter + громкости ---
     private sealed class SpeakerJb
@@ -367,6 +370,35 @@ public sealed class WebRTCVoiceClient : IDisposable
             Log($"WebRTC ICE failed: ice={_pc?.iceConnectionState}, conn={_pc?.connectionState}");
             throw new Exception("WebRTC ICE failed");
         }
+
+        _gccCts = new CancellationTokenSource();
+        _ = Task.Run(() => GccLoop(_gccCts.Token));
+    }
+
+    private async Task GccLoop(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try { await Task.Delay(3000, token); } catch { break; }
+            try
+            {
+                var (t, b, l) = JitterStats;
+                long pulled = 0;
+                foreach (var s in _speakers.Values) pulled += s.Jb.PulledFrames;
+                double lossRate = pulled + l > 0 ? (double)l / (pulled + l) : 0;
+                int target = 64000;
+                if (lossRate > 0.05 || t > 150) target = 32000;
+                else if (lossRate > 0.02 || t > 100) target = 48000;
+                if (_encoder != null && _encoder.Bitrate != target)
+                {
+                    _encoder.Bitrate = target;
+                    if (_useNativeOpus && _opusEncNative != IntPtr.Zero)
+                        try { Dsp.OpusNative.opus_encoder_ctl(_opusEncNative, Dsp.OpusNative.OPUS_SET_BITRATE_REQUEST, target); } catch { }
+                    Log($"GCC bitrate {target / 1000}k (loss {lossRate:P1}, jitter {t}ms)");
+                }
+            }
+            catch { }
+        }
     }
 
     private string SpeakerName(uint ssrc) =>
@@ -390,6 +422,7 @@ public sealed class WebRTCVoiceClient : IDisposable
 
                 foreach (var kv in _speakers)
                 {
+                    int expected = kv.Value.Jb.NextExpectedSeq;
                     bool got = kv.Value.Jb.Pull(frame);
                     if (got)
                     {
@@ -402,8 +435,13 @@ public sealed class WebRTCVoiceClient : IDisposable
                         lastTalk[kv.Key] = now;
                         SpeakerStarted?.Invoke(SpeakerName(kv.Key));
                     }
-                    else if ((now - kv.Value.LastActivity).TotalSeconds > 15)
-                        (dead ??= []).Add(kv.Key);
+                    else
+                    {
+                        if (expected >= 0)
+                            _ = _api.WebRTCNackAsync(_roomId, expected);
+                        if ((now - kv.Value.LastActivity).TotalSeconds > 15)
+                            (dead ??= []).Add(kv.Key);
+                    }
                 }
 
                 if (_apm != null)
@@ -412,6 +450,7 @@ public sealed class WebRTCVoiceClient : IDisposable
                     {
                         try { _apm.ProcessRender20ms(mix); } catch { }
                     }
+                    Volatile.Write(ref _lastRenderTicks, DateTime.UtcNow.Ticks);
                 }
 
                 if (!PlaybackMuted && _playbackBuffer != null)
@@ -463,11 +502,22 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (MicGain != 1.0)
                 for (int i = 0; i < FrameSize; i++) frame[i] *= (float)MicGain;
 
-            // 2b) AEC3 (APM) — 20ms, после HPF, до DFN. Требует предварительного ProcessRender в миксере.
+            // 2b) AEC3 (APM) — adaptive delay 20..200ms, после HPF, до DFN
             if (_apm != null)
             {
                 lock (_apmLock)
                 {
+                    long rt = Volatile.Read(ref _lastRenderTicks);
+                    if (rt != 0)
+                    {
+                        int d = (int)((DateTime.UtcNow.Ticks - rt) / TimeSpan.TicksPerMillisecond);
+                        d = Math.Clamp(d, 20, 200);
+                        if (Math.Abs(d - _aecDelayMs) > 10)
+                        {
+                            _aecDelayMs = d;
+                            try { _apm.SetDelay(d); } catch { }
+                        }
+                    }
                     try { _apm.ProcessCapture20ms(frame); } catch { }
                 }
             }
@@ -546,6 +596,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     {
         _running = false;
         _cts.Cancel();
+        try { _gccCts.Cancel(); } catch { }
         try { _capture?.StopRecording(); } catch { }
         try { _playback?.Stop(); } catch { }
         _capture?.Dispose();
