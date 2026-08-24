@@ -18,6 +18,9 @@ public sealed class AppSettings
     public int UserId { get; set; }
     public string UserName { get; set; } = "";
     public string UserColor { get; set; } = "#5865f2";
+    public Dictionary<string, string> Notes { get; set; } = new();
+    public List<string> Ignored { get; set; } = new();
+    public List<string> Blocked { get; set; } = new();
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoxCore", "settings.json");

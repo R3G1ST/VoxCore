@@ -1,28 +1,36 @@
-using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
 namespace VoxCore.Client;
 
-public sealed partial class SettingsWindow : Window
+public sealed partial class SettingsView : UserControl
 {
-    private readonly AppSettings _settings;
-    private readonly VoiceClient _voice;
-    private readonly WebRTCVoiceClient? _webrtc;
+    private AppSettings? _settings;
+    private VoiceClient? _voice;
+    private WebRTCVoiceClient? _webrtc;
     private readonly MicLevelMeter _meter = new();
     private readonly DispatcherTimer _statusTimer;
     private bool _testing;
+    private bool _inited;
     private UpdateInfo? _update;
 
-    public SettingsWindow(AppSettings settings, VoiceClient voice, WebRTCVoiceClient? webrtc = null)
+    public event System.Action? CloseRequested;
+
+    public SettingsView()
     {
+        InitializeComponent();
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _statusTimer.Tick += (_, _) => UpdateVoiceStatus();
+    }
+
+    public void Init(AppSettings settings, VoiceClient voice, WebRTCVoiceClient? webrtc)
+    {
+        if (_inited) return;
+        _inited = true;
         _settings = settings;
         _voice = voice;
         _webrtc = webrtc;
-        InitializeComponent();
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(520, 780));
-        AppWindow.Title = "VoxCore — настройки";
 
         var devices = MicLevelMeter.GetDevices();
         foreach (var d in devices) MicCombo.Items.Add(d);
@@ -41,7 +49,7 @@ public sealed partial class SettingsWindow : Window
         {
             VolumeText.Text = $"{e.NewValue:0}%";
             _voice.Volume = (int)e.NewValue;
-            _webrtc.Volume = (int)e.NewValue;
+            if (_webrtc is not null) _webrtc.Volume = (int)e.NewValue;
         };
 
         GainSlider.ValueChanged += (_, e) => GainText.Text = $"{e.NewValue:0}%";
@@ -51,20 +59,25 @@ public sealed partial class SettingsWindow : Window
 
         VerText.Text = $"VoxCore {UpdateService.CurrentVersion}";
 
-        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _statusTimer.Tick += (_, _) => UpdateVoiceStatus();
         _statusTimer.Start();
         UpdateVoiceStatus();
     }
 
-    private static SolidColorBrush Green() => new(Windows.UI.Color.FromArgb(255, 59, 165, 93));
-    private static SolidColorBrush Red() => new(Windows.UI.Color.FromArgb(255, 237, 66, 69));
+    public void Shutdown()
+    {
+        StopTest();
+        _statusTimer.Stop();
+    }
+
+    private static SolidColorBrush Green() => new(Windows.UI.Color.FromArgb(255, 46, 234, 139));
+    private static SolidColorBrush Red() => new(Windows.UI.Color.FromArgb(255, 255, 59, 92));
     private static SolidColorBrush Yellow() => new(Windows.UI.Color.FromArgb(255, 250, 166, 26));
-    private static SolidColorBrush Gray() => new(Windows.UI.Color.FromArgb(255, 90, 90, 106));
+    private static SolidColorBrush Gray() => new(Windows.UI.Color.FromArgb(255, 90, 97, 122));
 
     private void UpdateVoiceStatus()
     {
-        // --- Pipeline ---
+        if (_voice is null) return;
+
         var bitrate = _webrtc?.BitrateKbps ?? 0;
         OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "48 kHz моно";
 
@@ -93,7 +106,6 @@ public sealed partial class SettingsWindow : Window
         DtxStatus.Text = dtxOn ? "WebRTC" : "выключено";
         DtxStatus.Foreground = dtxOn ? Yellow() : Gray();
 
-        // --- Connection ---
         var webrtcConnected = _webrtc?.IsConnected == true;
         var udpConnected = !webrtcConnected && _voice.IsConnected;
         if (webrtcConnected)
@@ -211,6 +223,7 @@ public sealed partial class SettingsWindow : Window
 
     private void SaveBtn_Click(object sender, RoutedEventArgs e)
     {
+        if (_settings is null || _voice is null) return;
         StopTest();
         _settings.MicDevice = MicCombo.SelectedIndex;
         _settings.MicGain = GainSlider.Value;
@@ -226,13 +239,12 @@ public sealed partial class SettingsWindow : Window
         }
         _settings.Save();
         UpdateVoiceStatus();
-        Close();
+        CloseRequested?.Invoke();
     }
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e)
     {
         StopTest();
-        _statusTimer.Stop();
-        Close();
+        CloseRequested?.Invoke();
     }
 }

@@ -53,6 +53,15 @@ public sealed partial class MainWindow : Window
         catch { _useWebRtc = false; }
 
         InitializeComponent();
+        HubView.Init(_members, _user.Name, _voice, _webrtc, _settings, LeaveChannel);
+        HubView.HomeRequested += () => ShowUi(false);
+        HubView.SettingsRequested += () => ShowMode("settings");
+        SettingsView.Init(_settings, _voice, _webrtc);
+        SettingsView.CloseRequested += () => ShowUi(true);
+        HomeView.Init(_api, _user, () => _currentChannel, _settings);
+        HomeView.JoinRequested += async ch => { await JoinChannelAsync(ch); ShowUi(true); };
+        HomeView.Unauthorized += () => DispatcherQueue.TryEnqueue(ShowAuthAndClose);
+        HomeView.HubRequested += () => ShowUi(true);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1100, 700));
         AppWindow.Title = "VoxCore";
 
@@ -128,6 +137,9 @@ public sealed partial class MainWindow : Window
         _activeScreenShare?.StopCapture();
         _activeScreenShare?.Dispose();
         _screenShareViewer?.Close();
+        HubView.Shutdown();
+        HomeView.Shutdown();
+        SettingsView.Shutdown();
         foreach (var v in _memberViewers.Values) v.Close();
         _memberViewers.Clear();
         _voice.Dispose();
@@ -165,7 +177,7 @@ public sealed partial class MainWindow : Window
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(10, 9, 10, 9),
                 CornerRadius = new CornerRadius(6),
-                Background = BrushFromHex(_currentChannel?.Id == ch.Id ? "#3f4248" : "#00000000"),
+                Background = BrushFromHex(_currentChannel?.Id == ch.Id ? "#0d3a54" : "#00000000"),
                 BorderThickness = new Thickness(0)
             };
             var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -584,8 +596,10 @@ public sealed partial class MainWindow : Window
 
     private void ChannelsTabBtn_Click(object sender, RoutedEventArgs e)
     {
-        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#5865f2");
-        FriendsTabBtn.Background = MainWindow.BrushFromHex("#3f4248");
+        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#0d3a54");
+        ChannelsTabBtn.Foreground = MainWindow.BrushFromHex("#7fe3ff");
+        FriendsTabBtn.Background = MainWindow.BrushFromHex("#0d0f1e");
+        FriendsTabBtn.Foreground = MainWindow.BrushFromHex("#9fefff");
         FriendsPanel.Visibility = Visibility.Collapsed;
         ChannelsHeader.Visibility = Visibility.Visible;
         ChannelsScroll.Visibility = Visibility.Visible;
@@ -594,8 +608,10 @@ public sealed partial class MainWindow : Window
 
     private void FriendsTabBtn_Click(object sender, RoutedEventArgs e)
     {
-        FriendsTabBtn.Background = MainWindow.BrushFromHex("#5865f2");
-        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#3f4248");
+        FriendsTabBtn.Background = MainWindow.BrushFromHex("#0d3a54");
+        FriendsTabBtn.Foreground = MainWindow.BrushFromHex("#7fe3ff");
+        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#0d0f1e");
+        ChannelsTabBtn.Foreground = MainWindow.BrushFromHex("#9fefff");
         FriendsPanel.Visibility = Visibility.Visible;
         ChannelsHeader.Visibility = Visibility.Collapsed;
         ChannelsScroll.Visibility = Visibility.Collapsed;
@@ -695,6 +711,37 @@ public sealed partial class MainWindow : Window
 
     private ScreenShareService? _activeScreenShare;
     private ScreenShareViewerWindow? _screenShareViewer;
+    private bool _hubVisible = true;
+
+    private void AudioHubBtn_Click(object sender, RoutedEventArgs e) => ShowUi(true);
+
+    private void ToggleUiBtn_Click(object sender, RoutedEventArgs e) => ShowUi(!_hubVisible);
+
+    private void ShowUi(bool hub) => ShowMode(hub ? "hub" : "home");
+
+    private void ShowMode(string mode)
+    {
+        _hubVisible = mode == "hub";
+        HubView.Visibility = _hubVisible ? Visibility.Visible : Visibility.Collapsed;
+        HubView.SetActive(_hubVisible);
+        HomeView.Visibility = mode == "home" ? Visibility.Visible : Visibility.Collapsed;
+        HomeView.SetActive(mode == "home");
+        SettingsView.Visibility = mode == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        OldUi.Visibility = Visibility.Collapsed;
+        TitleBarArea.Background = BrushFromHex("#070810");
+        var tb = AppWindow.TitleBar;
+        var bg = ColorFromArgb(7, 8, 16);
+        var fg = ColorFromArgb(159, 239, 255);
+        tb.BackgroundColor = bg;
+        tb.ForegroundColor = fg;
+        tb.ButtonBackgroundColor = bg;
+        tb.ButtonForegroundColor = fg;
+        tb.ButtonHoverBackgroundColor = ColorFromArgb(20, 23, 42);
+        tb.ButtonHoverForegroundColor = ColorFromArgb(255, 255, 255);
+        tb.InactiveBackgroundColor = bg;
+        tb.InactiveForegroundColor = fg;
+        tb.ButtonInactiveBackgroundColor = bg;
+    }
 
     private async void ScreenShareBtn_Checked(object sender, RoutedEventArgs e)
     {
@@ -769,11 +816,7 @@ public sealed partial class MainWindow : Window
         ScreenShareStatusText.Text = "";
     }
 
-    private void SettingsBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var settingsWin = new SettingsWindow(_settings, _voice, _webrtc);
-        settingsWin.Activate();
-    }
+    private void SettingsBtn_Click(object sender, RoutedEventArgs e) => ShowMode("settings");
 
     private readonly Dictionary<string, ScreenShareViewerWindow> _memberViewers = new();
     private readonly DispatcherTimer _shareStatusTimer;

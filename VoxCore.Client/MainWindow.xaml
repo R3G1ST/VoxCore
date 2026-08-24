@@ -1,20 +1,15 @@
-﻿<Window
+<Window
     x:Class="VoxCore.Client.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Background="#313338">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:VoxCore.Client">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="40" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="248" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="248" />
-        </Grid.ColumnDefinitions>
 
-        <!-- TITLE BAR -->
-        <Grid x:Name="TitleBarArea" Grid.Row="0" Grid.ColumnSpan="3" Background="#1e1f22">
+        <Grid x:Name="TitleBarArea" Grid.Row="0" Background="#070810">
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0,0,0" VerticalAlignment="Center">
                 <Border Background="#5865f2" CornerRadius="6" Width="24" Height="24">
                     <TextBlock Text="V" FontFamily="Cascadia Code" FontWeight="Bold" Foreground="White"
@@ -28,17 +23,29 @@
             <Rectangle Width="140" HorizontalAlignment="Right" Opacity="0" />
         </Grid>
 
+        <Grid Grid.Row="1">
+            <local:VoiceGraphView x:Name="HubView" />
+            <local:HomeView x:Name="HomeView" Visibility="Collapsed" />
+            <local:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
+
+            <Grid x:Name="OldUi" Background="#0a0c18" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="248" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="248" />
+                </Grid.ColumnDefinitions>
+
         <!-- ЛЕВАЯ ПАНЕЛЬ: каналы / друзья -->
-        <Grid Grid.Row="1" Grid.Column="0" Background="#2b2d31">
+        <Grid Grid.Column="0" Background="#0d0f1e">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" Padding="8,10,8,4" Spacing="4">
                 <Button x:Name="ChannelsTabBtn" Content="КАНАЛЫ" Style="{ThemeResource VcSmallButton}"
-                        Click="ChannelsTabBtn_Click" />
+                        Background="#0d3a54" Foreground="#7fe3ff" Click="ChannelsTabBtn_Click" />
                 <Button x:Name="FriendsTabBtn" Content="ДРУЗЬЯ" Style="{ThemeResource VcSmallButton}"
-                        Background="#3f4248" Click="FriendsTabBtn_Click" />
+                        Background="#0d0f1e" Foreground="#9fefff" Click="FriendsTabBtn_Click" />
             </StackPanel>
 
             <Grid Grid.Row="1">
@@ -66,7 +73,7 @@
                     <StackPanel x:Name="ChannelsPanel" Padding="8,8" Spacing="2" />
                 </ScrollViewer>
 
-                <Grid x:Name="FriendsPanel" Grid.RowSpan="2" Background="#2b2d31" Visibility="Collapsed">
+                <Grid x:Name="FriendsPanel" Grid.RowSpan="2" Background="#0d0f1e" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -76,7 +83,7 @@
                     <StackPanel Grid.Row="0" Padding="12,8" Spacing="8">
                         <TextBlock Text="ПОИСК ДРУЗЕЙ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" />
                         <TextBox x:Name="SearchBox" PlaceholderText="ник пользователя..."
-                                 Background="#1e1f22" Foreground="#dbdee1" BorderBrush="#3f4248"
+                                 Background="#1a1f3a" Foreground="#dbdee1" BorderBrush="#2a2f55"
                                  BorderThickness="1" CornerRadius="6" FontFamily="Cascadia Code" FontSize="13"
                                  KeyDown="SearchBox_KeyDown" />
                         <Button x:Name="SearchBtn" Content="ИСКАТЬ" Style="{ThemeResource VcSmallButton}"
@@ -147,7 +154,7 @@
                                                             Background="#3ba55d" BorderThickness="0" Foreground="White"
                                                             Tag="{Binding Id}" Click="RequestAccept_Click" />
                                                     <Button Content="✕" Width="30" Height="30" Padding="0"
-                                                            Background="#ed4245" BorderThickness="0" Foreground="White"
+                                                            Background="#ff3b5c" BorderThickness="0" Foreground="White"
                                                             Tag="{Binding Id}" Click="RequestDecline_Click" />
                                                 </StackPanel>
                                             </Grid>
@@ -206,7 +213,7 @@
         </Grid>
 
         <!-- ЦЕНТР: голосовой канал + чат -->
-        <Grid Grid.Row="1" Grid.Column="1" Background="#313338">
+        <Grid Grid.Column="1" Background="#0a0c18">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -214,7 +221,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" BorderBrush="#1e1f22" BorderThickness="0,0,0,1" Padding="20,14">
+            <Border Grid.Row="0" BorderBrush="#1a1f3a" BorderThickness="0,0,0,1" Padding="20,14">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -245,7 +252,7 @@
             </StackPanel>
 
             <!-- Voice Connected Panel (Discord-style) -->
-            <Border x:Name="VoiceConnectedPanel" Grid.Row="2" Background="#2b2d31" BorderBrush="#1e1f22"
+            <Border x:Name="VoiceConnectedPanel" Grid.Row="2" Background="#0d0f1e" BorderBrush="#1a1f3a"
                     BorderThickness="0,1,0,0" Padding="12,10" Visibility="Collapsed">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -266,7 +273,7 @@
                         <TextBlock Grid.Column="1" Text="Голосовая связь подключена" FontFamily="Cascadia Code"
                                    FontSize="13" FontWeight="SemiBold" Foreground="#3ba55d" VerticalAlignment="Center" />
                         <Button Grid.Column="2" Content="📞" Width="32" Height="32" Padding="0"
-                                Background="#ed4245" Foreground="White" BorderThickness="0" CornerRadius="6"
+                                Background="#ff3b5c" Foreground="White" BorderThickness="0" CornerRadius="6"
                                 FontSize="14" Click="LeaveChannelBtn_Click"
                                 ToolTipService.ToolTip="отключиться" />
                     </Grid>
@@ -321,6 +328,13 @@
                                           ToolTipService.ToolTip="шумоподавление">
                                 <TextBlock Text="🎧" />
                             </ToggleButton>
+                            <!-- Audio Hub -->
+                            <Button x:Name="AudioHubBtn" Width="32" Height="32" Padding="0"
+                                    Background="Transparent" BorderThickness="0" FontSize="14"
+                                    Click="AudioHubBtn_Click"
+                                    ToolTipService.ToolTip="аудио-хаб — сеть канала">
+                                <TextBlock Text="🌌" />
+                            </Button>
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -373,14 +387,14 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <Grid Grid.Row="1" Background="#2b2d31" Padding="12,8">
+                <Grid Grid.Row="1" Background="#0d0f1e" Padding="12,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="ChannelChatInput" PlaceholderText="напиши сообщение..."
-                             FontFamily="Cascadia Code" FontSize="12" Background="#313338" Foreground="#dbdee1"
-                             BorderBrush="#3f4248" BorderThickness="1" CornerRadius="8" Padding="12,8"
+                             FontFamily="Cascadia Code" FontSize="12" Background="#0a0c18" Foreground="#dbdee1"
+                             BorderBrush="#2a2f55" BorderThickness="1" CornerRadius="8" Padding="12,8"
                              KeyDown="ChannelChatInput_KeyDown" />
                     <Button Grid.Column="1" Content="➤" Width="36" Height="36" Padding="0"
                             Background="#5865f2" Foreground="White" BorderThickness="0"
@@ -396,7 +410,7 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Border Grid.Row="0" Padding="12,10" Background="#2b2d31" BorderBrush="#1e1f22" BorderThickness="0,0,0,1">
+                <Border Grid.Row="0" Padding="12,10" Background="#0d0f1e" BorderBrush="#1a1f3a" BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Button Content="←" Width="28" Height="28" Padding="0" Background="Transparent"
                                 BorderThickness="0" Foreground="#949ba4" FontFamily="Cascadia Code" FontSize="14"
@@ -450,14 +464,14 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <Grid Grid.Row="2" Background="#2b2d31" Padding="12,8">
+                <Grid Grid.Row="2" Background="#0d0f1e" Padding="12,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="DmChatInput" PlaceholderText="напиши сообщение..."
-                             FontFamily="Cascadia Code" FontSize="12" Background="#313338" Foreground="#dbdee1"
-                             BorderBrush="#3f4248" BorderThickness="1" CornerRadius="8" Padding="12,8"
+                             FontFamily="Cascadia Code" FontSize="12" Background="#0a0c18" Foreground="#dbdee1"
+                             BorderBrush="#2a2f55" BorderThickness="1" CornerRadius="8" Padding="12,8"
                              KeyDown="DmChatInput_KeyDown" />
                     <Button Grid.Column="1" Content="➤" Width="36" Height="36" Padding="0"
                             Background="#5865f2" Foreground="White" BorderThickness="0"
@@ -469,7 +483,7 @@
         </Grid>
 
         <!-- ПРАВАЯ ПАНЕЛЬ: участники -->
-        <Grid Grid.Row="1" Grid.Column="2" Background="#2b2d31">
+        <Grid Grid.Column="2" Background="#0d0f1e">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -539,7 +553,7 @@
         </Grid>
 
         <!-- КАРТОЧКА АККАУНТА -->
-        <Border Grid.Row="1" Grid.Column="0" VerticalAlignment="Bottom" Background="#232428" BorderBrush="#1e1f22"
+        <Border Grid.Column="0" VerticalAlignment="Bottom" Background="#0d0f1e" BorderBrush="#1a1f3a"
                 BorderThickness="0,1,0,0" Padding="10,8">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -597,5 +611,7 @@
                         Click="SettingsBtn_Click" ToolTipService.ToolTip="настройки" />
             </Grid>
         </Border>
+            </Grid>
+        </Grid>
     </Grid>
 </Window>
