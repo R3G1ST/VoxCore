@@ -14,7 +14,7 @@ public sealed class DeepFilterNet : IDisposable
     private unsafe delegate*<nint, uint, void> _runFn;
     private unsafe delegate*<nint, void> _cleanupFn;
 
-    private readonly float[] _ctrlPorts = new float[6];
+    private readonly float[] _ctrlPorts;
     private readonly float[] _inChunk = new float[480];
     private readonly float[] _outChunk = new float[480];
     private float[] _carry = [];
@@ -22,8 +22,11 @@ public sealed class DeepFilterNet : IDisposable
     public int HopSize { get; } = 480;
     public bool IsLoaded => _handle != 0;
 
-    public DeepFilterNet(string dllPath, int sampleRate = 48000)
+    /// <param name="attLimitDb">Порт 0: предел подавления, dB (60 = агрессивнее стокового 50)</param>
+    public DeepFilterNet(string dllPath, int sampleRate = 48000, double attLimitDb = 60.0)
     {
+        _ctrlPorts = new float[6] { (float)attLimitDb, -10f, 30f, 20f, 0f, 0f };
+
         _libHandle = NativeLibrary.Load(dllPath);
         if (_libHandle == 0)
             throw new Exception($"Failed to load {dllPath}");
@@ -75,13 +78,6 @@ public sealed class DeepFilterNet : IDisposable
             _handle = _instantiateFn(descPtr, (nint)sampleRate);
         }
         if (_handle == 0) throw new Exception("DF3 instantiate failed");
-
-        _ctrlPorts[0] = 50f;
-        _ctrlPorts[1] = -10f;
-        _ctrlPorts[2] = 30f;
-        _ctrlPorts[3] = 20f;
-        _ctrlPorts[4] = 0f;
-        _ctrlPorts[5] = 0f;
 
         Console.WriteLine("[DF3] Loaded OK");
     }

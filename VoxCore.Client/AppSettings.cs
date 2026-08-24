@@ -13,6 +13,11 @@ public sealed class AppSettings
     public bool OpenMic { get; set; }
     public bool NoiseSuppression { get; set; } = true;
     public bool AgcEnabled { get; set; } = true;
+    public double DfAttLim { get; set; } = 60.0;
+    public double EqLow { get; set; }
+    public double EqMid { get; set; }
+    public double EqHigh { get; set; }
+    public Dictionary<string, double> UserVolumes { get; set; } = new();
     public string RoomPassword { get; set; } = "";
     public string? Token { get; set; }
     public int UserId { get; set; }

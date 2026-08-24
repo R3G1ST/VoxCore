@@ -33,6 +33,7 @@ Console.WriteLine("Press Ctrl+C to stop.");
 _ = CleanupLoopAsync(voiceUdp, rooms);
 _ = AcceptApiClientsAsync(apiTcp, store, rooms, webrtcRooms, pendingIceCandidates);
 _ = WebRtcCleanupLoopAsync(webrtcRooms);
+_ = MetricsLoopAsync(9101, rooms, webrtcRooms);
 
 while (true)
 {
@@ -90,6 +91,7 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
     catch { return Error("bad json"); }
 
     var op = req.GetProperty("op").GetString() ?? "";
+    Interlocked.Increment(ref Metrics.ApiOps);
     var token = GetString(req, "token");
     var user = token is null ? null : store.AuthByToken(token);
 
@@ -631,7 +633,12 @@ static RTCPeerConnection CreatePeerConnection(string roomId, User user, Concurre
                 {
                     try
                     {
-                        peer.Value.SendRtpRaw(media, rtpPkt.Payload, rtpPkt.Header.Timestamp, rtpPkt.Header.MarkerBit, rtpPkt.Header.PayloadType);
+                        // SIPSorcery 10.x: SendRtpRaw не позволяет задать SSRC — все спикеры
+                        // приходят клиенту одним потоком. Per-user volume keyed by SSRC
+                        // активируется автоматически при переходе на SFU с пробросом SSRC.
+                        peer.Value.SendRtpRaw(media, rtpPkt.Payload, rtpPkt.Header.Timestamp,
+                            rtpPkt.Header.MarkerBit, rtpPkt.Header.PayloadType);
+                        Interlocked.Increment(ref Metrics.RtpRelayed);
                     }
                     catch { }
                 }
@@ -719,6 +726,67 @@ static string ScreenGet(JsonElement req, Store store)
     return JsonSerializer.Serialize(new { ok = true, frame });
 }
 
+static async Task MetricsLoopAsync(int port,
+    ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms,
+    ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    var listener = new TcpListener(IPAddress.Any, port);
+    try { listener.Start(); }
+    catch (Exception ex) { Console.WriteLine($"metrics listener failed: {ex.Message}"); return; }
+
+    Console.WriteLine($"Prometheus metrics on :{port}/metrics");
+    while (true)
+    {
+        try
+        {
+            var client = await listener.AcceptTcpClientAsync();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using (client)
+                    using (var s = client.GetStream())
+                    using (var reader = new StreamReader(s, Encoding.UTF8, leaveOpen: true))
+                    {
+                        var req = await reader.ReadLineAsync();
+                        string? h;
+                        while (!string.IsNullOrEmpty(h = await reader.ReadLineAsync())) { }
+                        if (req == null || !req.Contains("/metrics"))
+                        {
+                            var notFound = Encoding.UTF8.GetBytes("HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot found");
+                            await s.WriteAsync(notFound);
+                            return;
+                        }
+                        var udpPeers = rooms.Sum(r => r.Value.Count);
+                        var webrtcPeers = webrtcRooms.Sum(r => r.Value.Count);
+                        var uptime = (long)(DateTime.UtcNow - Metrics.StartedAt).TotalSeconds;
+                        var text =
+                            "# TYPE voxcore_uptime_seconds counter\n" +
+                            $"voxcore_uptime_seconds {uptime}\n" +
+                            "# TYPE voxcore_udp_peers gauge\n" +
+                            $"voxcore_udp_peers {udpPeers}\n" +
+                            "# TYPE voxcore_webrtc_peers gauge\n" +
+                            $"voxcore_webrtc_peers {webrtcPeers}\n" +
+                            "# TYPE voxcore_webrtc_rooms gauge\n" +
+                            $"voxcore_webrtc_rooms {webrtcRooms.Count}\n" +
+                            "# TYPE voxcore_rtp_relayed_total counter\n" +
+                            $"voxcore_rtp_relayed_total {Interlocked.Read(ref Metrics.RtpRelayed)}\n" +
+                            "# TYPE voxcore_api_ops_total counter\n" +
+                            $"voxcore_api_ops_total {Interlocked.Read(ref Metrics.ApiOps)}\n";
+                        var body = Encoding.UTF8.GetBytes(text);
+                        var headers = $"HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n";
+                        var headerBytes = Encoding.UTF8.GetBytes(headers);
+                        await s.WriteAsync(headerBytes);
+                        await s.WriteAsync(body);
+                    }
+                }
+                catch { }
+            });
+        }
+        catch { await Task.Delay(100); }
+    }
+}
+
 public sealed class Member
 {
     public string Name { get; }
@@ -729,3 +797,13 @@ public sealed class Member
         LastSeen = lastSeen;
     }
 }
+
+/// <summary>Счётчики для Prometheus (/metrics :9101).</summary>
+public static class Metrics
+{
+    public static long RtpRelayed;
+    public static long ApiOps;
+    public static readonly DateTime StartedAt = DateTime.UtcNow;
+}
+
+
