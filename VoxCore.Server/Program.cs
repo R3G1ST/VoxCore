@@ -21,6 +21,8 @@ var webrtcRooms = new ConcurrentDictionary<string, ConcurrentDictionary<int, RTC
 var pendingOffers = new ConcurrentDictionary<string, (int UserId, string RoomId, string Sdp)>();
 // Buffered ICE candidates: "roomId:userId" -> list of candidate strings
 var pendingIceCandidates = new ConcurrentDictionary<string, List<string>>();
+// RTP cache for NACK: roomId -> seq -> packet
+var rtpCache = new ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>>();
 
 using var voiceUdp = new UdpClient(new IPEndPoint(IPAddress.Any, VoicePort));
 var apiTcp = new TcpListener(IPAddress.Any, ApiPort);
@@ -31,8 +33,9 @@ Console.WriteLine("WebRTC signaling enabled.");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 _ = CleanupLoopAsync(voiceUdp, rooms);
-_ = AcceptApiClientsAsync(apiTcp, store, rooms, webrtcRooms, pendingIceCandidates);
+_ = AcceptApiClientsAsync(apiTcp, store, rooms, webrtcRooms, pendingIceCandidates, rtpCache);
 _ = WebRtcCleanupLoopAsync(webrtcRooms);
+_ = MetricsLoopAsync(9101, rooms, webrtcRooms);
 
 while (true)
 {
@@ -49,20 +52,20 @@ while (true)
     }
 }
 
-static async Task AcceptApiClientsAsync(TcpListener listener, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIceCandidates)
+async Task AcceptApiClientsAsync(TcpListener listener, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIceCandidates, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
 {
     while (true)
     {
         try
         {
             var client = await listener.AcceptTcpClientAsync();
-            _ = HandleApiClientAsync(client, store, rooms, webrtcRooms, pendingIceCandidates);
+            _ = HandleApiClientAsync(client, store, rooms, webrtcRooms, pendingIceCandidates, rtpCache);
         }
         catch { await Task.Delay(10); }
     }
 }
 
-static async Task HandleApiClientAsync(TcpClient client, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIceCandidates)
+async Task HandleApiClientAsync(TcpClient client, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIceCandidates, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
 {
     try
     {
@@ -75,7 +78,7 @@ static async Task HandleApiClientAsync(TcpClient client, Store store, Concurrent
             {
                 var line = await reader.ReadLineAsync();
                 if (line is null) break;
-                var response = ProcessApi(line, store, rooms, webrtcRooms, pendingIceCandidates);
+                var response = ProcessApi(line, store, rooms, webrtcRooms, pendingIceCandidates, rtpCache);
                 await writer.WriteLineAsync(response);
             }
         }
@@ -83,18 +86,20 @@ static async Task HandleApiClientAsync(TcpClient client, Store store, Concurrent
     catch { }
 }
 
-static string ProcessApi(string line, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIceCandidates)
+string ProcessApi(string line, Store store, ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIceCandidates, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
 {
     JsonElement req;
     try { req = JsonDocument.Parse(line).RootElement; }
     catch { return Error("bad json"); }
 
     var op = req.GetProperty("op").GetString() ?? "";
+    Interlocked.Increment(ref Metrics.ApiOps);
     var token = GetString(req, "token");
     var user = token is null ? null : store.AuthByToken(token);
 
     return op switch
     {
+        "ping" => Ok(new { pong = true, ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }),
         "register" => Register(req, store),
         "login" => Login(req, store),
         "channels" => user is null ? Error("unauthorized") : Channels(store, rooms),
@@ -120,6 +125,7 @@ static string ProcessApi(string line, Store store, ConcurrentDictionary<string, 
         "webrtc_offer" => user is null ? Error("unauthorized") : WebRTCOffer(req, store, user, webrtcRooms, pendingIceCandidates).GetAwaiter().GetResult(),
         "webrtc_answer" => user is null ? Error("unauthorized") : WebRTCAnswer(req, store, user.Id, webrtcRooms),
         "webrtc_ice" => user is null ? Error("unauthorized") : WebRTCIce(req, store, user.Id, webrtcRooms, pendingIceCandidates),
+        "webrtc_nack" => user is null ? Error("unauthorized") : WebRTCNack(req, user.Id, webrtcRooms, rtpCache),
         "screen_start" => user is null ? Error("unauthorized") : ScreenStart(req, store, user.Id),
         "screen_stop" => user is null ? Error("unauthorized") : ScreenStop(user.Id),
         "screen_frame" => user is null ? Error("unauthorized") : ScreenFrame(req, user.Id, webrtcRooms),
@@ -513,14 +519,14 @@ static string WebRTCLeave(JsonElement req, Store store, int userId, ConcurrentDi
     return Ok(new { });
 }
 
-static Task<string> WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIce)
+Task<string> WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIce)
 {
     if (!req.TryGetProperty("sdp", out var sdpEl)) return Task.FromResult(Error("bad sdp"));
     var sdp = sdpEl.GetString() ?? "";
     var roomId = GetString(req, "room") ?? "";
     if (!webrtcRooms.TryGetValue(roomId, out var room)) return Task.FromResult(Error("комната не найдена"));
 
-    var pc = CreatePeerConnection(roomId, user, webrtcRooms);
+    var pc = CreatePeerConnection(roomId, user, webrtcRooms, rtpCache);
     room[user.Id] = pc;
 
     var audioTrack = new MediaStreamTrack(
@@ -598,7 +604,17 @@ static string WebRTCIce(JsonElement req, Store store, int userId, ConcurrentDict
     return Ok(new { });
 }
 
-static RTCPeerConnection CreatePeerConnection(string roomId, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+string WebRTCNack(JsonElement req, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
+{
+    var roomId = GetString(req, "room") ?? "";
+    if (!req.TryGetProperty("seq", out var seqEl) || !seqEl.TryGetInt32(out var seq)) return Error("bad seq");
+    if (!rtpCache.TryGetValue(roomId, out var cache) || !cache.TryGetValue(seq, out var pkt)) return Error("not found");
+    if (!webrtcRooms.TryGetValue(roomId, out var room) || !room.TryGetValue(userId, out var pc)) return Error("not in room");
+    try { pc.SendRtpRaw(SDPMediaTypesEnum.audio, pkt.payload, pkt.ts, pkt.marker, pkt.pt); } catch { }
+    return Ok(new { });
+}
+
+RTCPeerConnection CreatePeerConnection(string roomId, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
 {
     var config = new RTCConfiguration
     {
@@ -623,6 +639,11 @@ static RTCPeerConnection CreatePeerConnection(string roomId, User user, Concurre
 
     pc.OnRtpPacketReceived += (ep, media, rtpPkt) =>
     {
+        // Cache for NACK (50 пакетов)
+        var cache = rtpCache.GetOrAdd(roomId, _ => new ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>());
+        cache[rtpPkt.Header.SequenceNumber] = (rtpPkt.Payload.ToArray(), Convert.ToUInt32(rtpPkt.Header.Timestamp), Convert.ToInt32(rtpPkt.Header.MarkerBit), rtpPkt.Header.PayloadType);
+        if (cache.Count > 50) { var oldest = cache.Keys.Min(); cache.TryRemove(oldest, out _); }
+
         if (webrtcRooms.TryGetValue(roomId, out var room))
         {
             foreach (var peer in room)
@@ -631,7 +652,12 @@ static RTCPeerConnection CreatePeerConnection(string roomId, User user, Concurre
                 {
                     try
                     {
-                        peer.Value.SendRtpRaw(media, rtpPkt.Payload, rtpPkt.Header.Timestamp, rtpPkt.Header.MarkerBit, rtpPkt.Header.PayloadType);
+                        // SIPSorcery 10.x: SendRtpRaw не позволяет задать SSRC — все спикеры
+                        // приходят клиенту одним потоком. Per-user volume keyed by SSRC
+                        // активируется автоматически при переходе на SFU с пробросом SSRC.
+                        peer.Value.SendRtpRaw(media, rtpPkt.Payload, rtpPkt.Header.Timestamp,
+                            rtpPkt.Header.MarkerBit, rtpPkt.Header.PayloadType);
+                        Interlocked.Increment(ref Metrics.RtpRelayed);
                     }
                     catch { }
                 }
@@ -719,6 +745,67 @@ static string ScreenGet(JsonElement req, Store store)
     return JsonSerializer.Serialize(new { ok = true, frame });
 }
 
+static async Task MetricsLoopAsync(int port,
+    ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>> rooms,
+    ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+{
+    var listener = new TcpListener(IPAddress.Any, port);
+    try { listener.Start(); }
+    catch (Exception ex) { Console.WriteLine($"metrics listener failed: {ex.Message}"); return; }
+
+    Console.WriteLine($"Prometheus metrics on :{port}/metrics");
+    while (true)
+    {
+        try
+        {
+            var client = await listener.AcceptTcpClientAsync();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using (client)
+                    using (var s = client.GetStream())
+                    using (var reader = new StreamReader(s, Encoding.UTF8, leaveOpen: true))
+                    {
+                        var req = await reader.ReadLineAsync();
+                        string? h;
+                        while (!string.IsNullOrEmpty(h = await reader.ReadLineAsync())) { }
+                        if (req == null || !req.Contains("/metrics"))
+                        {
+                            var notFound = Encoding.UTF8.GetBytes("HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot found");
+                            await s.WriteAsync(notFound);
+                            return;
+                        }
+                        var udpPeers = rooms.Sum(r => r.Value.Count);
+                        var webrtcPeers = webrtcRooms.Sum(r => r.Value.Count);
+                        var uptime = (long)(DateTime.UtcNow - Metrics.StartedAt).TotalSeconds;
+                        var text =
+                            "# TYPE voxcore_uptime_seconds counter\n" +
+                            $"voxcore_uptime_seconds {uptime}\n" +
+                            "# TYPE voxcore_udp_peers gauge\n" +
+                            $"voxcore_udp_peers {udpPeers}\n" +
+                            "# TYPE voxcore_webrtc_peers gauge\n" +
+                            $"voxcore_webrtc_peers {webrtcPeers}\n" +
+                            "# TYPE voxcore_webrtc_rooms gauge\n" +
+                            $"voxcore_webrtc_rooms {webrtcRooms.Count}\n" +
+                            "# TYPE voxcore_rtp_relayed_total counter\n" +
+                            $"voxcore_rtp_relayed_total {Interlocked.Read(ref Metrics.RtpRelayed)}\n" +
+                            "# TYPE voxcore_api_ops_total counter\n" +
+                            $"voxcore_api_ops_total {Interlocked.Read(ref Metrics.ApiOps)}\n";
+                        var body = Encoding.UTF8.GetBytes(text);
+                        var headers = $"HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n";
+                        var headerBytes = Encoding.UTF8.GetBytes(headers);
+                        await s.WriteAsync(headerBytes);
+                        await s.WriteAsync(body);
+                    }
+                }
+                catch { }
+            });
+        }
+        catch { await Task.Delay(100); }
+    }
+}
+
 public sealed class Member
 {
     public string Name { get; }
@@ -729,3 +816,23 @@ public sealed class Member
         LastSeen = lastSeen;
     }
 }
+
+/// <summary>Счётчики для Prometheus (/metrics :9101).</summary>
+public static class Metrics
+{
+    public static long RtpRelayed;
+    public static long ApiOps;
+    public static readonly DateTime StartedAt = DateTime.UtcNow;
+}
+
+
+
+
+
+
+
+
+
+
+
+

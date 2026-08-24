@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -8,16 +8,16 @@ using Concentus;
 using Concentus.Enums;
 using Concentus.Structs;
 using NAudio.Wave;
-using RNNoise.NET;
 
 namespace VoxCore.Client;
 
+/// <summary>LEGACY: UDP-fallback когда WebRTC недоступен. RNNoise-каскад удалён (DFN3 живёт в WebRTCVoiceClient).</summary>
 public sealed class VoiceClient : IDisposable
 {
     private const int SampleRate = 48000;
     private const int Channels = 1;
-    private const int FrameSize = 960; // 20 мс
-    private const int FrameBytes = FrameSize * 2; // 16 бит PCM
+    private const int FrameSize = 960; // 20 РјСЃ
+    private const int FrameBytes = FrameSize * 2; // 16 Р±РёС‚ PCM
     private const int VkSpace = 0x20;
 
     private CancellationTokenSource _cts = new();
@@ -29,8 +29,6 @@ public sealed class VoiceClient : IDisposable
     private BufferedWaveProvider? _playbackBuffer;
     private IOpusEncoder? _encoder;
     private IOpusDecoder? _decoder;
-    private Denoiser? _denoiser;
-    private readonly float[] _denoiseBuf = new float[FrameSize];
     private Thread? _encodeThread;
     private Thread? _receiveThread;
     private Thread? _heartbeatThread;
@@ -88,14 +86,13 @@ public sealed class VoiceClient : IDisposable
         _udp.Client.SendTimeout = 1000;
 
         _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
-        _encoder.Bitrate = 128000;
+        _encoder.Bitrate = 64000; // legacy fallback: синхронизировано с WebRTC-профилем
         _encoder.Complexity = 10;
         _encoder.UseDTX = false;
         _encoder.UseInbandFEC = true;
         _encoder.PacketLossPercent = 5;
 
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
-        if (_noiseSuppression) _denoiser = new Denoiser();
 
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
         _playbackBuffer = new BufferedWaveProvider(waveFormat)
@@ -133,7 +130,7 @@ public sealed class VoiceClient : IDisposable
 
         SendJoin();
         MembersChanged?.Invoke([_name]);
-        StatusChanged?.Invoke($"подключено к {server}:{port}");
+        StatusChanged?.Invoke($"РїРѕРґРєР»СЋС‡РµРЅРѕ Рє {server}:{port}");
     }
 
     public void Disconnect()
@@ -147,9 +144,7 @@ public sealed class VoiceClient : IDisposable
         _playback?.Stop();
         _playback?.Dispose();
         _udp?.Close();
-        _denoiser?.Dispose();
-        _denoiser = null;
-        StatusChanged?.Invoke("отключено");
+        StatusChanged?.Invoke("РѕС‚РєР»СЋС‡РµРЅРѕ");
     }
 
     private void OnCaptureData(object? sender, WaveInEventArgs e)
@@ -191,8 +186,6 @@ public sealed class VoiceClient : IDisposable
                     off += FrameBytes;
                     if (talk && _encoder is not null)
                     {
-                        if (_denoiser is not null)
-                            DenoiseFrame(frameShorts);
                         if (MicGain != 1.0)
                         {
                             var g = (float)MicGain;
@@ -212,16 +205,6 @@ public sealed class VoiceClient : IDisposable
             }
             Thread.Sleep(1);
         }
-    }
-
-    private void DenoiseFrame(short[] shorts)
-    {
-        for (int i = 0; i < FrameSize; i++)
-            _denoiseBuf[i] = shorts[i] / 32768f;
-        _denoiser!.Denoise(_denoiseBuf.AsSpan(0, 480), false);
-        _denoiser.Denoise(_denoiseBuf.AsSpan(480, 480), false);
-        for (int i = 0; i < FrameSize; i++)
-            shorts[i] = (short)Math.Clamp((int)(_denoiseBuf[i] * 32768f), short.MinValue, short.MaxValue);
     }
 
     private void SendAudio(byte[] opus, int len)
@@ -274,7 +257,7 @@ public sealed class VoiceClient : IDisposable
 
                 switch (data[0])
                 {
-                    case 0x03: // аудио [0x03][roomLen][room][nameLen][name][opus...]
+                    case 0x03: // Р°СѓРґРёРѕ [0x03][roomLen][room][nameLen][name][opus...]
                         if (_decoder is null || _playbackBuffer is null) continue;
                         int roomLen = data[1];
                         int nameLen = data[2 + roomLen];
@@ -290,7 +273,7 @@ public sealed class VoiceClient : IDisposable
                             var ct = raw.AsSpan(12);
                             var pt = new byte[ct.Length - 16];
                             try { _gcm.Decrypt(nonce, ct[..^16], ct[^16..], pt, null); }
-                            catch { continue; } // чужой пароль — игнор
+                            catch { continue; } // С‡СѓР¶РѕР№ РїР°СЂРѕР»СЊ вЂ” РёРіРЅРѕСЂ
                             payload = pt;
                         }
                         else
@@ -310,7 +293,7 @@ public sealed class VoiceClient : IDisposable
                             _playbackBuffer.AddSamples(outBytes, 0, n * 2);
                         break;
 
-                    case 0x06: // список участников
+                    case 0x06: // СЃРїРёСЃРѕРє СѓС‡Р°СЃС‚РЅРёРєРѕРІ
                         var names = ParseMembers(data);
                         MembersChanged?.Invoke(names);
                         break;

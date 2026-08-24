@@ -41,6 +41,14 @@ public sealed partial class SettingsView : UserControl
         GainText.Text = $"{settings.MicGain:0}%";
         NsToggle.IsOn = settings.NoiseSuppression;
         AgcToggle.IsOn = settings.AgcEnabled;
+        DfAttSlider.Value = settings.DfAttLim;
+        DfAttText.Text = $"{settings.DfAttLim:0} dB";
+        EqLowSlider.Value = settings.EqLow;
+        EqMidSlider.Value = settings.EqMid;
+        EqHighSlider.Value = settings.EqHigh;
+        EqLowText.Text = $"{settings.EqLow:0} dB";
+        EqMidText.Text = $"{settings.EqMid:0} dB";
+        EqHighText.Text = $"{settings.EqHigh:0} dB";
         LoopbackCheck.IsChecked = false;
 
         VolumeSlider.Value = 80;
@@ -51,6 +59,11 @@ public sealed partial class SettingsView : UserControl
             _voice.Volume = (int)e.NewValue;
             if (_webrtc is not null) _webrtc.Volume = (int)e.NewValue;
         };
+
+        DfAttSlider.ValueChanged += (_, e) => DfAttText.Text = $"{e.NewValue:0} dB";
+        EqLowSlider.ValueChanged += (_, e) => { EqLowText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
+        EqMidSlider.ValueChanged += (_, e) => { EqMidText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
+        EqHighSlider.ValueChanged += (_, e) => { EqHighText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
 
         GainSlider.ValueChanged += (_, e) => GainText.Text = $"{e.NewValue:0}%";
         _meter.LevelChanged += level =>
@@ -78,6 +91,15 @@ public sealed partial class SettingsView : UserControl
     {
         if (_voice is null) return;
 
+        HpfDot.Fill = Green();
+        HpfStatus.Text = "активен";
+        HpfStatus.Foreground = Green();
+
+        var aecOn = _webrtc?.IsAecActive == true;
+        AecDot.Fill = aecOn ? Green() : Gray();
+        AecStatus.Text = aecOn ? "активен" : "нет DLL";
+        AecStatus.Foreground = aecOn ? Green() : Gray();
+
         var bitrate = _webrtc?.BitrateKbps ?? 0;
         OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "48 kHz моно";
 
@@ -92,19 +114,46 @@ public sealed partial class SettingsView : UserControl
         DfStatus.Foreground = dfLoaded ? Green() : Gray();
 
         var agcOn = AgcToggle.IsOn && _webrtc != null;
-        AgcDot.Fill = agcOn ? Green() : Gray();
-        AgcStatus.Text = agcOn ? "целевая 10%, макс x8" : "выключено";
-        AgcStatus.Foreground = agcOn ? Green() : Gray();
+        if (agcOn)
+        {
+            AgcDot.Fill = Green();
+            double gdb = _webrtc!.AgcGainDb;
+            AgcStatus.Text = $"активен {gdb:+0;-0;0}dB";
+            AgcStatus.Foreground = Green();
+        }
+        else
+        {
+            AgcDot.Fill = Gray();
+            AgcStatus.Text = "выключено";
+            AgcStatus.Foreground = Gray();
+        }
 
-        var fecOn = _webrtc?.IsFec == true;
+        bool dredOn = _webrtc?.IsDredActive == true;
+        bool fecOn = dredOn || _webrtc?.IsFec == true;
         FecDot.Fill = fecOn ? Green() : Gray();
-        FecStatus.Text = fecOn ? "активно" : "выключено";
+        FecStatus.Text = dredOn ? "DRED 40ms" : (fecOn ? "FEC" : "выключено");
         FecStatus.Foreground = fecOn ? Green() : Gray();
 
-        var dtxOn = _webrtc?.IsDtx == true;
-        DtxDot.Fill = dtxOn ? Yellow() : Gray();
-        DtxStatus.Text = dtxOn ? "WebRTC" : "выключено";
-        DtxStatus.Foreground = dtxOn ? Yellow() : Gray();
+        var vadLoaded = _webrtc?.IsVadLoaded == true;
+        if (!vadLoaded)
+        {
+            VadDot.Fill = Gray();
+            VadStatus.Text = "нет модели";
+            VadStatus.Foreground = Gray();
+        }
+        else
+        {
+            double p = _webrtc!.VadProb;
+            bool speaking = p >= 0.5;
+            VadDot.Fill = speaking ? Green() : Yellow();
+            VadStatus.Text = $"{p:0.00} / 0.50 {(speaking ? "речь" : "тишина")}";
+            VadStatus.Foreground = speaking ? Green() : Yellow();
+        }
+
+        bool gateOpen = _webrtc?.IsGateOpen ?? false;
+        GateDot.Fill = gateOpen ? Green() : Gray();
+        GateStatus.Text = gateOpen ? "открыт" : "зажат (-40dB)";
+        GateStatus.Foreground = gateOpen ? Green() : Gray();
 
         var webrtcConnected = _webrtc?.IsConnected == true;
         var udpConnected = !webrtcConnected && _voice.IsConnected;
@@ -139,6 +188,50 @@ public sealed partial class SettingsView : UserControl
             IceStatus.Text = "—";
             TurnDot.Fill = Gray();
             TurnStatus.Text = "194.31.204.5:3478";
+        }
+
+        int ping = _webrtc?.LastPingMs ?? -1;
+        if (ping < 0)
+        {
+            PingDot.Fill = Gray();
+            PingStatus.Text = "—";
+            PingStatus.Foreground = Gray();
+        }
+        else if (ping < 50)
+        {
+            PingDot.Fill = Green();
+            PingStatus.Text = $"{ping} ms";
+            PingStatus.Foreground = Green();
+        }
+        else if (ping < 100)
+        {
+            PingDot.Fill = Yellow();
+            PingStatus.Text = $"{ping} ms";
+            PingStatus.Foreground = Yellow();
+        }
+        else
+        {
+            PingDot.Fill = Red();
+            PingStatus.Text = $"{ping} ms";
+            PingStatus.Foreground = Red();
+        }
+
+        if (_webrtc?.IsConnected == true)
+        {
+            var (t, b, l) = _webrtc!.JitterStats;
+            JitDot.Fill = b <= t + 40 ? Green() : Yellow();
+            JitStatus.Text = $"{t}ms / {b}ms";
+            JitStatus.Foreground = Green();
+            LossDot.Fill = l == 0 ? Green() : (l < 10 ? Yellow() : Red());
+            LossStatus.Text = $"{l} кадров";
+            LossStatus.Foreground = l == 0 ? Green() : (l < 10 ? Yellow() : Red());
+        }
+        else
+        {
+            JitDot.Fill = Gray();
+            JitStatus.Text = "—";
+            LossDot.Fill = Gray();
+            LossStatus.Text = "—";
         }
     }
 
@@ -229,6 +322,10 @@ public sealed partial class SettingsView : UserControl
         _settings.MicGain = GainSlider.Value;
         _settings.NoiseSuppression = NsToggle.IsOn;
         _settings.AgcEnabled = AgcToggle.IsOn;
+        _settings.DfAttLim = DfAttSlider.Value;
+        _settings.EqLow = EqLowSlider.Value;
+        _settings.EqMid = EqMidSlider.Value;
+        _settings.EqHigh = EqHighSlider.Value;
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;
@@ -236,6 +333,7 @@ public sealed partial class SettingsView : UserControl
         {
             _webrtc.NoiseSuppression = NsToggle.IsOn;
             _webrtc.AgcEnabled = AgcToggle.IsOn;
+            _webrtc.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value);
         }
         _settings.Save();
         UpdateVoiceStatus();
