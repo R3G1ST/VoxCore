@@ -31,6 +31,7 @@ public sealed class AdaptiveJitterBuffer
     public int BufferedMs { get { lock (_lock) return _slots.Count * 20; } }
     public long LostFrames { get; private set; }
     public long PulledFrames { get; private set; }
+    public int NextExpectedSeq { get { lock (_lock) return _nextSeq; } }
 
     public void PushDecoded(int seq, short[] frame)
     {
