@@ -5,3 +5,7 @@ obj/
 *.suo
 *.userprefs
 TestResults/
+# accidental wrapper copies
+microsoft.windowsappsdk.winui/
+*.bak
+
