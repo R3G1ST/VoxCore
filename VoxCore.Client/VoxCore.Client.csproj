@@ -13,7 +13,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.1.0</Version>
+    <Version>1.1.0-beta</Version>
     <Product>VoxCore</Product>
     <AssemblyTitle>VoxCore</AssemblyTitle>
     <Description>VoxCore</Description>
@@ -34,6 +34,7 @@
     <Copy SourceFiles="$(OutputPath)VoxCore.Client.pri" DestinationFolder="$(PublishDir)" Condition="Exists('$(OutputPath)VoxCore.Client.pri')" />
   </Target>
 </Project>
+
 
 
 

@@ -79,7 +79,17 @@ public sealed partial class SettingsView : UserControl
         if (_voice is null) return;
 
         var bitrate = _webrtc?.BitrateKbps ?? 0;
-        OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "48 kHz моно";
+        OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "64 kbps";
+
+        var hpfOn = _webrtc != null;
+        HpfDot.Fill = hpfOn ? Green() : Gray();
+        HpfStatus.Text = hpfOn ? "активен" : "выкл";
+        HpfStatus.Foreground = hpfOn ? Green() : Gray();
+
+        var aecOn = _webrtc?.IsAecActive == true;
+        AecDot.Fill = aecOn ? Green() : Gray();
+        AecStatus.Text = aecOn ? "активен" : "выкл";
+        AecStatus.Foreground = aecOn ? Green() : Gray();
 
         var nsOn = NsToggle.IsOn;
         RnnoiseDot.Fill = nsOn ? Green() : Red();
@@ -92,19 +102,30 @@ public sealed partial class SettingsView : UserControl
         DfStatus.Foreground = dfLoaded ? Green() : Gray();
 
         var agcOn = AgcToggle.IsOn && _webrtc != null;
+        var agcGain = _webrtc?.AgcGainDb ?? 0;
         AgcDot.Fill = agcOn ? Green() : Gray();
-        AgcStatus.Text = agcOn ? "целевая 10%, макс x8" : "выключено";
+        AgcStatus.Text = agcOn ? $"активен {agcGain:0}dB" : "выключено";
         AgcStatus.Foreground = agcOn ? Green() : Gray();
 
         var fecOn = _webrtc?.IsFec == true;
         FecDot.Fill = fecOn ? Green() : Gray();
-        FecStatus.Text = fecOn ? "активно" : "выключено";
+        FecStatus.Text = fecOn ? "DRED 40ms" : "выключено";
         FecStatus.Foreground = fecOn ? Green() : Gray();
 
         var dtxOn = _webrtc?.IsDtx == true;
         DtxDot.Fill = dtxOn ? Yellow() : Gray();
-        DtxStatus.Text = dtxOn ? "WebRTC" : "выключено";
+        DtxStatus.Text = dtxOn ? "включено" : "выключено";
         DtxStatus.Foreground = dtxOn ? Yellow() : Gray();
+
+        var vadProb = _webrtc?.VadProb ?? 0;
+        VadDot.Fill = vadProb > 0 ? Yellow() : Gray();
+        VadStatus.Text = $"{vadProb:F2} / 0,50 тишина";
+        VadStatus.Foreground = vadProb > 0 ? Yellow() : Gray();
+
+        var gateOpen = _webrtc?.IsGateOpen ?? false;
+        GateDot.Fill = gateOpen ? Green() : Gray();
+        GateStatus.Text = gateOpen ? "открыт" : "закрыт (-40dB)";
+        GateStatus.Foreground = gateOpen ? Green() : Gray();
 
         var webrtcConnected = _webrtc?.IsConnected == true;
         var udpConnected = !webrtcConnected && _voice.IsConnected;
@@ -140,6 +161,20 @@ public sealed partial class SettingsView : UserControl
             TurnDot.Fill = Gray();
             TurnStatus.Text = "194.31.204.5:3478";
         }
+
+        var ping = _webrtc?.LastPingMs ?? -1;
+        PingDot.Fill = ping >= 0 ? (ping < 100 ? Green() : ping < 200 ? Yellow() : Red()) : Gray();
+        PingStatus.Text = ping >= 0 ? $"{ping} ms" : "—";
+        PingStatus.Foreground = ping >= 0 ? (ping < 100 ? Green() : ping < 200 ? Yellow() : Red()) : Gray();
+
+        var jitter = _webrtc?.JitterStats ?? (0, 0, 0);
+        JitterDot.Fill = webrtcConnected ? Green() : Gray();
+        JitterStatus.Text = webrtcConnected ? $"{jitter.TargetMs}ms / {jitter.BufferedMs}ms" : "0ms / 0ms";
+        JitterStatus.Foreground = webrtcConnected ? Green() : Gray();
+
+        PlcDot.Fill = webrtcConnected ? Green() : Gray();
+        PlcStatus.Text = webrtcConnected ? $"{jitter.Lost} кадров" : "0 кадров";
+        PlcStatus.Foreground = webrtcConnected ? Green() : Gray();
     }
 
     private async void CheckUpdateBtn_Click(object sender, RoutedEventArgs e)
