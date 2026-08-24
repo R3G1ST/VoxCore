@@ -99,6 +99,7 @@ string ProcessApi(string line, Store store, ConcurrentDictionary<string, Concurr
 
     return op switch
     {
+        "ping" => Ok(new { pong = true, ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }),
         "register" => Register(req, store),
         "login" => Login(req, store),
         "channels" => user is null ? Error("unauthorized") : Channels(store, rooms),

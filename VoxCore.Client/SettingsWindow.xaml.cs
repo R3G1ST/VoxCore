@@ -183,6 +183,32 @@ public sealed partial class SettingsWindow : Window
             TurnStatus.Text = "194.31.204.5:3478";
         }
 
+        int ping = _webrtc?.LastPingMs ?? -1;
+        if (ping < 0)
+        {
+            PingDot.Fill = Gray();
+            PingStatus.Text = "—";
+            PingStatus.Foreground = Gray();
+        }
+        else if (ping < 50)
+        {
+            PingDot.Fill = Green();
+            PingStatus.Text = $"{ping} ms";
+            PingStatus.Foreground = Green();
+        }
+        else if (ping < 100)
+        {
+            PingDot.Fill = Yellow();
+            PingStatus.Text = $"{ping} ms";
+            PingStatus.Foreground = Yellow();
+        }
+        else
+        {
+            PingDot.Fill = Red();
+            PingStatus.Text = $"{ping} ms";
+            PingStatus.Foreground = Red();
+        }
+
         if (_webrtc?.IsConnected == true)
         {
             var (t, b, l) = _webrtc!.JitterStats;

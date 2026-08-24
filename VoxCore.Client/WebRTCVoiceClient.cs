@@ -64,6 +64,9 @@ public sealed class WebRTCVoiceClient : IDisposable
     private readonly ConcurrentDictionary<string, float> _userVolumes = new();  // ник -> 0..2
 
     private Thread? _mixerThread;
+    private CancellationTokenSource _pingCts = new();
+    private int _lastPingMs = -1;
+    public int LastPingMs => _lastPingMs;
 
     public bool IsConnected => _pc?.connectionState == RTCPeerConnectionState.connected;
     public bool IsDeepFilterLoaded => _deepFilter?.IsLoaded == true;
@@ -218,6 +221,18 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         try { ApmLoader.EnsureLoaded(); _apm = new ApmProcessor(aec3: true, ns: false, agc2: false, hpf: false); Log("APM AEC3 loaded"); }
         catch (Exception ex) { Log($"APM not loaded: {ex.Message}"); }
+
+        _pingCts = new CancellationTokenSource();
+        _ = Task.Run(() => PingLoop(_pingCts.Token));
+    }
+
+    private async Task PingLoop(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try { _lastPingMs = await _api.PingAsync(); } catch { _lastPingMs = -1; }
+            try { await Task.Delay(2500, token); } catch { break; }
+        }
     }
 
     public void ApplyEq(double low, double mid, double high)
@@ -623,7 +638,11 @@ public sealed class WebRTCVoiceClient : IDisposable
         _apm?.Dispose();
         if (_opusEncNative != IntPtr.Zero) { try { Dsp.OpusNative.opus_encoder_destroy(_opusEncNative); } catch { } _opusEncNative = IntPtr.Zero; }
         if (_opusDecNative != IntPtr.Zero) { try { Dsp.OpusNative.opus_decoder_destroy(_opusDecNative); } catch { } _opusDecNative = IntPtr.Zero; }
+        try { _pingCts.Cancel(); } catch { }
+        try { _pingCts.Dispose(); } catch { }
+        try { _gccCts.Dispose(); } catch { }
         _cts.Dispose();
     }
 }
+
 

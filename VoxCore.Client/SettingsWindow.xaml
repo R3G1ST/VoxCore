@@ -176,6 +176,17 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="PingDot" Width="8" Height="8" Fill="#949ba4" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Пинг до сервера" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="PingStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <Ellipse x:Name="JitDot" Width="8" Height="8" Fill="#949ba4" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Text="Jitter buffer (цель / буфер)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbdee1" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="JitStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4" VerticalAlignment="Center"/>

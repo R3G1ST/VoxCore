@@ -280,6 +280,14 @@ public sealed class ApiClient
         try { await CallAsync(new { op = "webrtc_nack", token = Token, room = roomId, seq }); } catch { }
     }
 
+    public async Task<int> PingAsync()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await CallAsync(new { op = "ping" });
+        sw.Stop();
+        return (int)sw.ElapsedMilliseconds;
+    }
+
     public async Task SendScreenFrameAsync(string roomId, byte[] jpegData)
     {
         var b64 = Convert.ToBase64String(jpegData);
