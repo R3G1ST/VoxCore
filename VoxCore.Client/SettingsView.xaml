@@ -64,7 +64,29 @@
                             </Grid.ColumnDefinitions>
                             <Ellipse x:Name="OpusDot" Width="8" Height="8" Fill="#2eea8b" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Text="Opus 48kHz моно" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="OpusStatus" Text="256 kbps" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="OpusStatus" Text="64 kbps" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="HpfDot" Width="8" Height="8" Fill="#2eea8b" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="HPF 80Hz (резка гула)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="HpfStatus" Text="активен" FontFamily="Cascadia Code" FontSize="11" Foreground="#2eea8b" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="AecDot" Width="8" Height="8" Fill="#2eea8b" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="AEC3 эхоподавление" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="AecStatus" Text="активен" FontFamily="Cascadia Code" FontSize="11" Foreground="#2eea8b" VerticalAlignment="Center"/>
                         </Grid>
 
                         <Grid>
@@ -97,7 +119,7 @@
                             </Grid.ColumnDefinitions>
                             <Ellipse x:Name="AgcDot" Width="8" Height="8" Fill="#2eea8b" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Text="AGC автокомпрессия" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="AgcStatus" Text="целевая 10%, макс x8" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="AgcStatus" Text="активен 0dB" FontFamily="Cascadia Code" FontSize="11" Foreground="#2eea8b" VerticalAlignment="Center"/>
                         </Grid>
 
                         <Grid>
@@ -117,9 +139,20 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Ellipse x:Name="DtxDot" Width="8" Height="8" Fill="#faa61a" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock Grid.Column="1" Text="DTX (Transmission Optimization)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="DtxStatus" Text="WebRTC" FontFamily="Cascadia Code" FontSize="11" Foreground="#faa61a" VerticalAlignment="Center"/>
+                            <Ellipse x:Name="VadDot" Width="8" Height="8" Fill="#faa61a" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Silero VAD (детектор речи)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="VadStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="GateDot" Width="8" Height="8" Fill="#2eea8b" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Noise Gate −40dB" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="GateStatus" Text="активен" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -162,6 +195,39 @@
                             <TextBlock Grid.Column="1" Text="TURN сервер" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="TurnStatus" Text="194.31.204.5:3478" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
                         </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="PingDot" Width="8" Height="8" Fill="#5a617a" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Пинг до сервера" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="PingStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="JitDot" Width="8" Height="8" Fill="#5a617a" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Jitter buffer (цель / буфер)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="JitStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="LossDot" Width="8" Height="8" Fill="#5a617a" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="Потери кадров (PLC)" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="LossStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -196,6 +262,57 @@
                     <TextBlock Text="AGC АВТОКОМПРЕССИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
                     <ToggleSwitch x:Name="AgcToggle" OnContent="вкл" OffContent="выкл" />
                 </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="DEEPFILTER ПРЕДЕЛ ПОДАВЛЕНИЯ (после переподключения)" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="DfAttSlider" Minimum="6" Maximum="60" StepFrequency="2" />
+                        <TextBlock x:Name="DfAttText" Grid.Column="1" MinWidth="52" Text="60 dB"
+                                   FontFamily="Cascadia Code" FontSize="12" Foreground="#9fefff"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right" />
+                    </Grid>
+                </StackPanel>
+
+                <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"
+                        CornerRadius="14" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="ЭКВАЛАЙЗЕР (МАСТЕР) — применится сразу" FontFamily="Cascadia Code" FontSize="11" Foreground="#7fe3ff" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="44" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Низ 200Hz" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                            <Slider x:Name="EqLowSlider" Grid.Column="1" Minimum="-12" Maximum="12" StepFrequency="1" />
+                            <TextBlock x:Name="EqLowText" Grid.Column="2" Text="0 dB" FontFamily="Cascadia Code" FontSize="11" Foreground="#9fefff" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="44" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Сред 1kHz" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                            <Slider x:Name="EqMidSlider" Grid.Column="1" Minimum="-12" Maximum="12" StepFrequency="1" />
+                            <TextBlock x:Name="EqMidText" Grid.Column="2" Text="0 dB" FontFamily="Cascadia Code" FontSize="11" Foreground="#9fefff" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="44" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Верх 4kHz" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
+                            <Slider x:Name="EqHighSlider" Grid.Column="1" Minimum="-12" Maximum="12" StepFrequency="1" />
+                            <TextBlock x:Name="EqHighText" Grid.Column="2" Text="0 dB" FontFamily="Cascadia Code" FontSize="11" Foreground="#9fefff" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <StackPanel Spacing="8">
                     <TextBlock Text="ГРОМКОСТЬ" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
