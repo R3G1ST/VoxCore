@@ -329,14 +329,14 @@ public sealed partial class MainWindow : Window
         LeaveChannel();
         bool connected = false;
 
-        // Try WebRTC first (with 15s timeout)
+        // Try WebRTC first (with 30s timeout)
         if (_useWebRtc && _webrtc != null)
         {
             try
             {
                 UpdateConnectingOverlay("подключение к WebRTC...");
                 var connectTask = _webrtc.ConnectAsync(ch.Id);
-                var completed = await Task.WhenAny(connectTask, Task.Delay(15000));
+                var completed = await Task.WhenAny(connectTask, Task.Delay(30000));
                 if (completed == connectTask && !connectTask.IsFaulted)
                 {
                     await connectTask;
@@ -345,16 +345,19 @@ public sealed partial class MainWindow : Window
                 }
                 else
                 {
-                    StatusText.Text = "WebRTC timeout, fallback to UDP";
-                    WebRTCVoiceClient.Log("timeout 15s, fallback to UDP");
-                    UpdateConnectingOverlay("WebRTC timeout → UDP");
+                    string reason = connectTask.IsFaulted
+                        ? $"ошибка: {connectTask.Exception?.GetBaseException().Message}"
+                        : "таймаут ICE (30с)";
+                    StatusText.Text = $"WebRTC fallback → UDP: {reason}";
+                    WebRTCVoiceClient.Log($"WebRTC fallback: {reason}");
+                    UpdateConnectingOverlay($"WebRTC: {reason} → UDP");
                     _webrtc.Disconnect();
                 }
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
-                WebRTCVoiceClient.Log($"failed: {ex.Message}, fallback to UDP");
+                WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}, fallback to UDP");
                 UpdateConnectingOverlay($"ошибка WebRTC: {ex.Message}");
                 _webrtc.Disconnect();
             }
