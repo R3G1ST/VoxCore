@@ -126,6 +126,7 @@ string ProcessApi(string line, Store store, ConcurrentDictionary<string, Concurr
         "webrtc_answer" => user is null ? Error("unauthorized") : WebRTCAnswer(req, store, user.Id, webrtcRooms),
         "webrtc_ice" => user is null ? Error("unauthorized") : WebRTCIce(req, store, user.Id, webrtcRooms, pendingIceCandidates),
         "webrtc_nack" => user is null ? Error("unauthorized") : WebRTCNack(req, user.Id, webrtcRooms, rtpCache),
+        "webrtc_sync" => WebRTCSync(req, store, webrtcRooms),
         "screen_start" => user is null ? Error("unauthorized") : ScreenStart(req, store, user.Id),
         "screen_stop" => user is null ? Error("unauthorized") : ScreenStop(user.Id),
         "screen_frame" => user is null ? Error("unauthorized") : ScreenFrame(req, user.Id, webrtcRooms),
@@ -480,30 +481,51 @@ static async Task BroadcastMembers(UdpClient udp, IPEndPoint from, string roomNa
 // ---------- WebRTC Signaling ----------
 
 static string WebRTCJoin(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
-{
-    if (!req.TryGetProperty("channel", out var chEl) || !chEl.TryGetInt32(out var channelId)) return Error("bad channel");
-    var channel = store.Channels.FirstOrDefault(c => c.Id == channelId);
-    if (channel is null) return Error("канал не найден");
-    var roomId = channel.Name;
-    var room = webrtcRooms.GetOrAdd(roomId, _ => new ConcurrentDictionary<int, RTCPeerConnection>());
-
-    // Идемпотентность: старую утёкшую сессию (например, после ICE failed без leave)
-    // закрываем и заменяем — иначе клиент навсегда получает "уже в комнате".
-    if (room.TryGetValue(user.Id, out var stale))
     {
-        try { stale.Close("rejoin"); } catch { }
-        try { stale.Dispose(); } catch { }
-        room.TryRemove(user.Id, out _);
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC STALE removed room={roomId} userId={user.Id}");
+        if (!req.TryGetProperty("channel", out var chEl) || !chEl.TryGetInt32(out var channelId)) return Error("bad channel");
+        var channel = store.Channels.FirstOrDefault(c => c.Id == channelId);
+        if (channel is null) return Error("канал не найден");
+        var roomId = channel.Name;
+        var room = webrtcRooms.GetOrAdd(roomId, _ => new ConcurrentDictionary<int, RTCPeerConnection>());
+
+        // Идемпотентность: старую утёкшую сессию (например, после ICE failed без leave)
+        // закрываем и заменяем — иначе клиент навсегда получает "уже в комнате".
+        if (room.TryGetValue(user.Id, out var stale))
+        {
+            try { stale.Close("rejoin"); } catch { }
+            try { stale.Dispose(); } catch { }
+            room.TryRemove(user.Id, out _);
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC STALE removed room={roomId} userId={user.Id}");
+        }
+
+        var peerIds = room.Keys.Where(id => id != user.Id).ToList();
+        var peerNames = peerIds.Select(id => store.FindUserById(id)?.Name ?? $"user{id}").ToList();
+        var allNames = new List<string> { user.Name };
+        allNames.AddRange(peerNames);
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC JOIN  room={roomId} user={user.Name} peers={peerIds.Count}");
+
+        // Notify existing peers that a new user joined (so their member lists update)
+        foreach (var existingId in peerIds)
+        {
+            // We can't push directly to client (no persistent connection), 
+            // but we could add a notification queue. For now, existing clients
+            // will learn on next reconnect. The client polls via webrtc_join? No.
+            // Better: add a "peers_changed" notification mechanism.
+        }
+
+        return Ok(new { peers = peerIds, names = allNames, roomId });
     }
 
-    var peerIds = room.Keys.Where(id => id != user.Id).ToList();
-    var peerNames = peerIds.Select(id => store.FindUserById(id)?.Name ?? $"user{id}").ToList();
-    var allNames = new List<string> { user.Name };
-    allNames.AddRange(peerNames);
-    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC JOIN  room={roomId} user={user.Name} peers={peerIds.Count}");
-    return Ok(new { peers = peerIds, names = allNames, roomId });
-}
+    static string WebRTCSync(JsonElement req, Store store, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+    {
+        var roomId = GetString(req, "room");
+        if (string.IsNullOrEmpty(roomId)) return Error("bad room");
+        if (!webrtcRooms.TryGetValue(roomId, out var room))
+            return Ok(new { peers = new List<int>(), names = new List<string>(), roomId });
+        var peerIds = room.Keys.ToList();
+        var peerNames = peerIds.Select(id => store.FindUserById(id)?.Name ?? $"user{id}").ToList();
+        return Ok(new { peers = peerIds, names = peerNames, roomId });
+    }
 
 static string WebRTCLeave(JsonElement req, Store store, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
 {
