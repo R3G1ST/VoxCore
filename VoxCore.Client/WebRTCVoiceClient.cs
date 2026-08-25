@@ -341,7 +341,7 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         var fmtp = "minptime=10;useinbandfec=1;usedtx=0;maxaveragebitrate=96000";
         var audioTrack = new MediaStreamTrack(
-            new AudioFormat(AudioCodecsEnum.OPUS, 111, 48000, 2, fmtp));
+            new AudioFormat(AudioCodecsEnum.OPUS, 111, 48000, Channels, fmtp));
         _pc.addTrack(audioTrack);
 
         _pc.OnRtpPacketReceived += (ep, media, rtpPkt) =>
