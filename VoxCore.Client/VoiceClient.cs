@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -8,6 +9,7 @@ using Concentus;
 using Concentus.Enums;
 using Concentus.Structs;
 using NAudio.Wave;
+using VoxCore.Client.Dsp;
 
 namespace VoxCore.Client;
 
@@ -42,6 +44,8 @@ public sealed class VoiceClient : IDisposable
     private long _nonceCounter;
     private readonly byte[] _sessionId = RandomNumberGenerator.GetBytes(4);
 
+    private VoiceDspPipeline? _dsp;
+
     public event Action<IReadOnlyList<string>>? MembersChanged;
     public event Action<bool>? TalkingChanged;
     public event Action<string>? StatusChanged;
@@ -73,7 +77,7 @@ public sealed class VoiceClient : IDisposable
 
     public bool IsConnected => _running;
 
-    public void Connect(string server, int port, string room, string name, string password)
+public void Connect(string server, int port, string room, string name, string password, AppSettings? settings = null)
     {
         _room = room;
         _name = name;
@@ -86,13 +90,16 @@ public sealed class VoiceClient : IDisposable
         _udp.Client.SendTimeout = 1000;
 
         _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
-        _encoder.Bitrate = 64000; // legacy fallback: синхронизировано с WebRTC-профилем
+        _encoder.Bitrate = 64000;
         _encoder.Complexity = 10;
         _encoder.UseDTX = false;
         _encoder.UseInbandFEC = true;
         _encoder.PacketLossPercent = 5;
 
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
+
+        // DSP pipeline (HPF → DFN3 → AGC2 → VAD → Gate)
+        _dsp = new VoiceDspPipeline(SampleRate, FrameSize, NoiseSuppression, settings?.DfAttLim ?? 60.0, settings);
 
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
         _playbackBuffer = new BufferedWaveProvider(waveFormat)
@@ -130,10 +137,10 @@ public sealed class VoiceClient : IDisposable
 
         SendJoin();
         MembersChanged?.Invoke([_name]);
-        StatusChanged?.Invoke($"РїРѕРґРєР»СЋС‡РµРЅРѕ Рє {server}:{port}");
+        StatusChanged?.Invoke($"подключено к {server}:{port}");
     }
 
-    public void Disconnect()
+public void Disconnect()
     {
         if (!_running) return;
         SendLeave();
@@ -144,7 +151,9 @@ public sealed class VoiceClient : IDisposable
         _playback?.Stop();
         _playback?.Dispose();
         _udp?.Close();
-        StatusChanged?.Invoke("РѕС‚РєР»СЋС‡РµРЅРѕ");
+        _dsp?.Dispose();
+        _dsp = null;
+        StatusChanged?.Invoke("отключено");
     }
 
     private void OnCaptureData(object? sender, WaveInEventArgs e)
@@ -158,9 +167,11 @@ public sealed class VoiceClient : IDisposable
     {
         var frameBytes = new byte[FrameBytes];
         var frameShorts = new short[FrameSize];
+        var frameFloat = new float[FrameSize];
         var opusBuf = new byte[4000];
         var lastTalk = false;
         var lastTalkPing = DateTime.MinValue;
+        var wasSilent = true;
 
         while (!token.IsCancellationRequested)
         {
@@ -184,16 +195,36 @@ public sealed class VoiceClient : IDisposable
                     Array.Copy(_accum, off, frameBytes, 0, FrameBytes);
                     Buffer.BlockCopy(frameBytes, 0, frameShorts, 0, FrameBytes);
                     off += FrameBytes;
-                    if (talk && _encoder is not null)
+
+                    // short[] -> float[] (-1..1)
+                    for (int i = 0; i < FrameSize; i++)
+                        frameFloat[i] = frameShorts[i] / 32768f;
+
+                    if (MicGain != 1.0)
                     {
-                        if (MicGain != 1.0)
-                        {
-                            var g = (float)MicGain;
-                            for (int i = 0; i < frameShorts.Length; i++)
-                                frameShorts[i] = (short)Math.Clamp(frameShorts[i] * g, short.MinValue, short.MaxValue);
-                        }
+                        var g = (float)MicGain;
+                        for (int i = 0; i < FrameSize; i++)
+                            frameFloat[i] *= g;
+                    }
+
+                    // DSP pipeline
+                    bool vadActive = _dsp?.Process(frameFloat) ?? true;
+                    bool shouldSend = talk && vadActive && _encoder is not null;
+
+                    if (shouldSend)
+                    {
+                        // float[] -> short[]
+                        for (int i = 0; i < FrameSize; i++)
+                            frameShorts[i] = (short)Math.Clamp((int)(frameFloat[i] * 32768f), short.MinValue, short.MaxValue);
+
                         int n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
                         SendAudio(opusBuf, n);
+                        wasSilent = false;
+                    }
+                    else
+                    {
+                        if (!wasSilent) _dsp?.ResetVad();
+                        wasSilent = true;
                     }
                 }
                 if (off > 0)

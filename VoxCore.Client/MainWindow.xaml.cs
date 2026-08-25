@@ -370,7 +370,7 @@ public sealed partial class MainWindow : Window
             {
                 var host = _settings.Server.Split(':')[0];
                 UpdateConnectingOverlay("подключение по UDP...");
-                _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
+                _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password, _settings);
                 connected = true;
                 UpdateConnectingOverlay("UDP подключен");
             }
