@@ -431,6 +431,25 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         _gccCts = new CancellationTokenSource();
         _ = Task.Run(() => GccLoop(_gccCts.Token));
+        _ = Task.Run(() => SyncLoop(_gccCts.Token));
+    }
+
+    private async Task SyncLoop(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try { await Task.Delay(10000, token); } catch { break; }
+            if (string.IsNullOrEmpty(_roomId)) continue;
+            try
+            {
+                var (peers, names) = await _api.WebRTCSyncAsync(_roomId);
+                _ssrcNames.Clear();
+                for (int i = 0; i < peers.Count && i < names.Count; i++)
+                    _ssrcNames[(uint)peers[i]] = names[i];
+                MembersChanged?.Invoke(names);
+            }
+            catch { }
+        }
     }
 
     private async Task GccLoop(CancellationToken token)
