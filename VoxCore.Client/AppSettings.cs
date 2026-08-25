@@ -14,6 +14,8 @@ public sealed class AppSettings
     public bool NoiseSuppression { get; set; } = true;
     public bool AgcEnabled { get; set; } = true;
     public double DfAttLim { get; set; } = 60.0;
+    public double VadThreshold { get; set; } = 0.3;
+    public float PreVadGain { get; set; } = 2.0f;
     public double EqLow { get; set; }
     public double EqMid { get; set; }
     public double EqHigh { get; set; }

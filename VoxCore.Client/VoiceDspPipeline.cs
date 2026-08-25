@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using VoxCore.Client.Dsp;
 
@@ -21,9 +22,14 @@ public sealed class VoiceDspPipeline : IDisposable
     private SileroVad? _vad;
     private NoiseGate? _gate;
 
+    private double _vadThreshold = 0.3; // ниже = чувствительнее
+    private float _preVadGain = 1.0f;   // буст перед VAD
+
     public bool IsDfnLoaded => _dfn?.IsLoaded ?? false;
     public bool IsVadLoaded => _vad != null;
     public double VadProb => _vad?.LastProb ?? 0;
+    public double VadThreshold { get => _vadThreshold; set => _vadThreshold = Math.Clamp(value, 0.05, 0.9); }
+    public float PreVadGain { get => _preVadGain; set => _preVadGain = Math.Clamp(value, 0.5f, 10f); }
 
     public event Action<bool>? VadStateChanged;
 
@@ -76,6 +82,8 @@ public sealed class VoiceDspPipeline : IDisposable
         {
             AgcEnabled = settings.AgcEnabled;
             NoiseSuppression = settings.NoiseSuppression;
+            VadThreshold = settings.VadThreshold;
+            PreVadGain = settings.PreVadGain;
         }
     }
 
@@ -131,11 +139,24 @@ public sealed class VoiceDspPipeline : IDisposable
         // 3) AGC2
         _agc?.Process(frame);
 
-        // 4) VAD
-        bool vadActiveRaw = false;
-        try { vadActiveRaw = _vad?.Process(frame) ?? true; } catch { vadActiveRaw = true; }
+        // 4) Pre-VAD gain boost (помогает тихим микрофонам)
+        if (_preVadGain != 1.0f)
+        {
+            for (int i = 0; i < _frameSize; i++)
+                frame[i] *= _preVadGain;
+        }
 
-        // 5) Gate с VAD-оверрайдом
+        // 5) VAD
+        bool vadActiveRaw = false;
+        try 
+        { 
+            var _ = _vad?.Process(frame) ?? true;
+            var prob = _vad?.LastProb ?? 1.0;
+            vadActiveRaw = prob >= _vadThreshold;
+        } 
+        catch { vadActiveRaw = true; }
+
+        // 6) Gate с VAD-оверрайдом
         if (vadActiveRaw) _gate?.ForceOpen();
         _gate?.Process(frame);
 
