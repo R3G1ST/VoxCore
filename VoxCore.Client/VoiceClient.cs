@@ -180,6 +180,7 @@ public void Disconnect()
             {
                 lastTalk = talk;
                 TalkingChanged?.Invoke(talk);
+                Log($"EncodeLoop: talk={talk}, OpenMic={OpenMic}, MicMuted={MicMuted}");
             }
             if (talk && (DateTime.UtcNow - lastTalkPing).TotalMilliseconds > 200)
             {
@@ -209,6 +210,9 @@ public void Disconnect()
 
                     // DSP pipeline
                     bool vadActive = _dsp?.Process(frameFloat) ?? true;
+                    if (talk && vadActive != lastTalk)
+                        Log($"EncodeLoop: vadActive={vadActive}, talk={talk}, VadProb={_dsp?.VadProb:F3}");
+
                     bool shouldSend = talk && vadActive && _encoder is not null;
 
                     if (shouldSend)
@@ -218,12 +222,12 @@ public void Disconnect()
                             frameShorts[i] = (short)Math.Clamp((int)(frameFloat[i] * 32768f), short.MinValue, short.MaxValue);
 
                         int n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
-                        SendAudio(opusBuf, n);
+                        if (n > 0) { SendAudio(opusBuf, n); Log($"EncodeLoop: sent {n} bytes opus"); }
                         wasSilent = false;
                     }
                     else
                     {
-                        if (!wasSilent) _dsp?.ResetVad();
+                        if (!wasSilent) { _dsp?.ResetVad(); Log("EncodeLoop: silence -> reset VAD"); }
                         wasSilent = true;
                     }
                 }
@@ -304,7 +308,7 @@ public void Disconnect()
                             var ct = raw.AsSpan(12);
                             var pt = new byte[ct.Length - 16];
                             try { _gcm.Decrypt(nonce, ct[..^16], ct[^16..], pt, null); }
-                            catch { continue; } // С‡СѓР¶РѕР№ РїР°СЂРѕР»СЊ вЂ” РёРіРЅРѕСЂ
+                            catch { Log($"ReceiveLoop: decrypt failed from {speaker}"); continue; }
                             payload = pt;
                         }
                         else
@@ -315,6 +319,7 @@ public void Disconnect()
                         SpeakerStarted?.Invoke(speaker);
                         lock (_speakerLock) _speakerLast[speaker] = DateTime.UtcNow;
                         int n = _decoder.Decode(payload.AsSpan(), pcmBuf.AsSpan(), FrameSize, false);
+                        Log($"ReceiveLoop: decoded {n} samples from {speaker}, payload={payload.Length}");
                         for (int i = 0; i < n; i++)
                         {
                             outBytes[i * 2] = (byte)(pcmBuf[i] & 0xFF);
@@ -326,6 +331,7 @@ public void Disconnect()
 
                     case 0x06: // СЃРїРёСЃРѕРє СѓС‡Р°СЃС‚РЅРёРєРѕРІ
                         var names = ParseMembers(data);
+                        Log($"ReceiveLoop: members {names.Count} [{string.Join(",", names)}]");
                         MembersChanged?.Invoke(names);
                         break;
                 }
@@ -416,6 +422,16 @@ public void Disconnect()
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
+
+    private static void Log(string msg)
+    {
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), "voxcore-client.log");
+            File.AppendAllText(path, $"[{DateTime.Now:HH:mm:ss}] {msg}\n");
+        }
+        catch { }
+    }
 
     public void Dispose()
     {
