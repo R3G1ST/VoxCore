@@ -34,7 +34,7 @@ public sealed class HpfBiquad
     }
 }
 
-/// <summary>Noise Gate −40dBFS в стиле SpeexDSP: гистерезис open/close + hold 150ms + плавные края 5ms.</summary>
+    /// <summary>Noise Gate −40dBFS в стиле SpeexDSP: гистерезис open/close + hold 150ms + плавные края 5ms.</summary>
 public sealed class NoiseGate
 {
     private readonly float _openRms;
@@ -48,6 +48,7 @@ public sealed class NoiseGate
     private int _rampStep;
 
     public bool IsOpen => _open;
+    public void ForceOpen() { _open = true; _holdLeft = _holdFrames; _gain = 1f; _rampStep = _rampFrames; }
 
     /// <param name="thresholdDb">Порог открытия, dBFS (−40 по умолчанию)</param>
     public NoiseGate(double thresholdDb = -40.0, int sampleRate = 48000, int frameSamples = 960)

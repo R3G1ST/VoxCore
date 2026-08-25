@@ -613,5 +613,21 @@
         </Border>
             </Grid>
         </Grid>
+        <!-- Connecting overlay (центр экрана, реальные шаги подключения) -->
+        <Grid x:Name="ConnectingOverlay" Grid.RowSpan="2" Background="#CC070810" Visibility="Collapsed" Canvas.ZIndex="10">
+            <Border CornerRadius="16" BorderThickness="2" BorderBrush="#00e5ff" Background="#E60D0F1E" Padding="32,28" HorizontalAlignment="Center" VerticalAlignment="Center" MinWidth="340">
+                <StackPanel Spacing="16" HorizontalAlignment="Center">
+                    <ProgressRing IsActive="True" Width="48" Height="48" Foreground="#00e5ff" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ConnectingTitle" Text="Подключение..." FontFamily="Cascadia Code" FontSize="14" FontWeight="Bold" Foreground="#eaf7ff" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ConnectingStep" Text="Инициализация..." FontFamily="Cascadia Code" FontSize="12" Foreground="#7fe3ff" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                    <StackPanel x:Name="ConnectingSteps" Spacing="4" Margin="0,8,0,0">
+                        <TextBlock x:Name="Step1" Text="○ Подготовка" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a"/>
+                        <TextBlock x:Name="Step2" Text="○ Сбор ICE кандидатов" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a"/>
+                        <TextBlock x:Name="Step3" Text="○ Обмен SDP" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a"/>
+                        <TextBlock x:Name="Step4" Text="○ Установка соединения" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

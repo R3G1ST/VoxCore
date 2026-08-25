@@ -52,6 +52,10 @@ public sealed class WebRTCVoiceClient : IDisposable
     private readonly object _apmLock = new();
     private long _lastRenderTicks;
     private int _aecDelayMs = 40;
+    private Thread? _apmThread;
+    private readonly ConcurrentQueue<float[]> _apmRenderQ = new();
+    private readonly ConcurrentQueue<float[]> _apmCaptureQ = new();
+    private readonly ConcurrentQueue<float[]> _apmOutQ = new();
 
     // --- Приём: per-speaker jitter + громкости ---
     private sealed class SpeakerJb
@@ -224,6 +228,44 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         _pingCts = new CancellationTokenSource();
         _ = Task.Run(() => PingLoop(_pingCts.Token));
+
+        // APM dedicated thread 4MB stack, single-threaded render/capture
+        if (_apm != null)
+        {
+            var apmThread = new Thread(() => ApmLoop(), 4 * 1024 * 1024) { IsBackground = true };
+            apmThread.Start();
+            _apmThread = apmThread;
+        }
+    }
+
+    private void ApmLoop()
+    {
+        var tmp = new float[480];
+        while (true)
+        {
+            try
+            {
+                if (_apm == null) { Thread.Sleep(10); continue; }
+                bool did = false;
+                if (_apmRenderQ.TryDequeue(out var far10))
+                {
+                    far10.CopyTo(tmp, 0);
+                    lock (_apmLock) _apm.ProcessRender(tmp);
+                    did = true;
+                }
+                if (_apmCaptureQ.TryDequeue(out var near10))
+                {
+                    near10.CopyTo(tmp, 0);
+                    lock (_apmLock) _apm.ProcessCapture(tmp);
+                    var out10 = new float[480];
+                    tmp.CopyTo(out10, 0);
+                    _apmOutQ.Enqueue(out10);
+                    did = true;
+                }
+                if (!did) Thread.Sleep(5);
+            }
+            catch { Thread.Sleep(5); }
+        }
     }
 
     private async Task PingLoop(CancellationToken token)
@@ -461,10 +503,9 @@ public sealed class WebRTCVoiceClient : IDisposable
 
                 if (_apm != null)
                 {
-                    lock (_apmLock)
-                    {
-                        try { _apm.ProcessRender20ms(mix); } catch { }
-                    }
+                    var f1 = new float[480]; var f2 = new float[480];
+                    mix.AsSpan(0, 480).CopyTo(f1); mix.AsSpan(480, 480).CopyTo(f2);
+                    _apmRenderQ.Enqueue(f1); _apmRenderQ.Enqueue(f2);
                     Volatile.Write(ref _lastRenderTicks, DateTime.UtcNow.Ticks);
                 }
 
@@ -517,23 +558,28 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (MicGain != 1.0)
                 for (int i = 0; i < FrameSize; i++) frame[i] *= (float)MicGain;
 
-            // 2b) AEC3 (APM) — adaptive delay 20..200ms, после HPF, до DFN
+            // 2b) AEC3 (APM) — adaptive delay, 10ms chunks via dedicated thread
             if (_apm != null)
             {
-                lock (_apmLock)
+                long rt = Volatile.Read(ref _lastRenderTicks);
+                if (rt != 0)
                 {
-                    long rt = Volatile.Read(ref _lastRenderTicks);
-                    if (rt != 0)
+                    int d = (int)((DateTime.UtcNow.Ticks - rt) / TimeSpan.TicksPerMillisecond);
+                    d = Math.Clamp(d, 20, 200);
+                    if (Math.Abs(d - _aecDelayMs) > 10)
                     {
-                        int d = (int)((DateTime.UtcNow.Ticks - rt) / TimeSpan.TicksPerMillisecond);
-                        d = Math.Clamp(d, 20, 200);
-                        if (Math.Abs(d - _aecDelayMs) > 10)
-                        {
-                            _aecDelayMs = d;
-                            try { _apm.SetDelay(d); } catch { }
-                        }
+                        _aecDelayMs = d;
+                        try { lock (_apmLock) _apm.SetDelay(d); } catch { }
                     }
-                    try { _apm.ProcessCapture20ms(frame); } catch { }
+                }
+                var c1 = new float[480]; var c2 = new float[480];
+                frame.AsSpan(0, 480).CopyTo(c1); frame.AsSpan(480, 480).CopyTo(c2);
+                _apmCaptureQ.Enqueue(c1); _apmCaptureQ.Enqueue(c2);
+                int waited = 0;
+                while (_apmOutQ.Count < 2 && waited < 50) { Thread.Sleep(1); waited++; }
+                if (_apmOutQ.TryDequeue(out var o1) && _apmOutQ.TryDequeue(out var o2))
+                {
+                    o1.CopyTo(frame.AsSpan(0, 480)); o2.CopyTo(frame.AsSpan(480, 480));
                 }
             }
 
@@ -545,21 +591,23 @@ public sealed class WebRTCVoiceClient : IDisposable
                 frame = denoised;
             }
 
-            // 4) Gate -40dB
-            _gate.Process(frame);
-
-            // 5) AGC2 + limiter
+            // 4) AGC2 + limiter (до Gate, чтобы поднять тихий голос перед гейтом)
             if (AgcEnabled) _agc2.Process(frame);
 
-            // 6) VAD: молчание = не отправляем
-            bool vadActive = _vad?.Process(frame) ?? true;
-            if (MicMuted) vadActive = false;
+            // 5) VAD (до Gate, чтобы Gate мог ориентироваться на речь)
+            bool vadActiveRaw;
+            try { vadActiveRaw = _vad?.Process(frame) ?? true; } catch { vadActiveRaw = true; }
+            bool vadActive = vadActiveRaw && !MicMuted;
 
+            // 6) Gate -40dB с оверрайдом от VAD (если VAD говорит речь — форсируем открыто)
+            if (vadActiveRaw) _gate.ForceOpen();
+            _gate.Process(frame);
+            // Если VAD молчит — не отправляем (даже если Gate открыт из-за громкого шума)
             if (!vadActive)
             {
                 lock (_preroll)
                 {
-                    _preroll.Enqueue(frame);
+                    _preroll.Enqueue((float[])frame.Clone());
                     while (_preroll.Count > PrerollFrames) _preroll.Dequeue();
                 }
                 if (!_wasSilent) _vad?.Reset();

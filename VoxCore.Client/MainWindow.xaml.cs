@@ -322,6 +322,10 @@ public sealed partial class MainWindow : Window
             }
         }
 
+        ShowConnectingOverlay(ch.Name, 0);
+        void OverlayHandler(string msg) => DispatcherQueue.TryEnqueue(() => UpdateConnectingOverlay(msg));
+        if (_webrtc != null) _webrtc.StatusChanged += OverlayHandler;
+
         LeaveChannel();
         bool connected = false;
 
@@ -330,17 +334,20 @@ public sealed partial class MainWindow : Window
         {
             try
             {
+                UpdateConnectingOverlay("подключение к WebRTC...");
                 var connectTask = _webrtc.ConnectAsync(ch.Id);
                 var completed = await Task.WhenAny(connectTask, Task.Delay(15000));
                 if (completed == connectTask && !connectTask.IsFaulted)
                 {
                     await connectTask;
                     connected = true;
+                    UpdateConnectingOverlay("WebRTC подключен");
                 }
                 else
                 {
                     StatusText.Text = "WebRTC timeout, fallback to UDP";
                     WebRTCVoiceClient.Log("timeout 15s, fallback to UDP");
+                    UpdateConnectingOverlay("WebRTC timeout → UDP");
                     _webrtc.Disconnect();
                 }
             }
@@ -348,6 +355,7 @@ public sealed partial class MainWindow : Window
             {
                 StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
                 WebRTCVoiceClient.Log($"failed: {ex.Message}, fallback to UDP");
+                UpdateConnectingOverlay($"ошибка WebRTC: {ex.Message}");
                 _webrtc.Disconnect();
             }
         }
@@ -358,16 +366,24 @@ public sealed partial class MainWindow : Window
             try
             {
                 var host = _settings.Server.Split(':')[0];
+                UpdateConnectingOverlay("подключение по UDP...");
                 _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
                 connected = true;
+                UpdateConnectingOverlay("UDP подключен");
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"UDP failed: {ex.Message}";
+                UpdateConnectingOverlay($"UDP failed: {ex.Message}");
+                if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
+                HideConnectingOverlay();
                 await ShowErrorAsync("не удалось подключиться к голосовому каналу");
                 return;
             }
         }
+
+        if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
+        HideConnectingOverlay();
 
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
@@ -1060,4 +1076,55 @@ public sealed partial class MainWindow : Window
 
     private static Windows.UI.Color ColorFromArgb(byte r, byte g, byte b)
         => Windows.UI.Color.FromArgb(255, r, g, b);
+
+    // ---------- Connecting overlay ----------
+    private void ShowConnectingOverlay(string channel, int step)
+    {
+        ConnectingTitle.Text = $"Подключение к {channel}";
+        ConnectingStep.Text = "Подготовка...";
+        Step1.Text = "● Подготовка"; Step1.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 46, 234, 139));
+        Step2.Text = "○ Сбор ICE кандидатов"; Step2.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 97, 122));
+        Step3.Text = "○ Обмен SDP"; Step3.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 97, 122));
+        Step4.Text = "○ Установка соединения"; Step4.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 97, 122));
+        ConnectingOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HideConnectingOverlay() => ConnectingOverlay.Visibility = Visibility.Collapsed;
+
+    private void UpdateConnectingOverlay(string msg)
+    {
+        ConnectingStep.Text = msg;
+        var green = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 46, 234, 139));
+        var gray = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 97, 122));
+        if (msg.Contains("подключение к WebRTC") || msg.Contains("Подготовка"))
+        {
+            Step1.Text = "● Подготовка"; Step1.Foreground = green;
+        }
+        else if (msg.Contains("ICE") || msg.Contains("кандидатов"))
+        {
+            Step1.Text = "✓ Подготовка"; Step1.Foreground = green;
+            Step2.Text = "● Сбор ICE кандидатов"; Step2.Foreground = green;
+        }
+        else if (msg.Contains("offer") || msg.Contains("answer") || msg.Contains("SDP"))
+        {
+            Step2.Text = "✓ Сбор ICE кандидатов"; Step2.Foreground = green;
+            Step3.Text = "● Обмен SDP"; Step3.Foreground = green;
+        }
+        else if (msg.Contains("WebRTC:") || msg.Contains("Установка") || msg.Contains("setRemote"))
+        {
+            Step3.Text = "✓ Обмен SDP"; Step3.Foreground = green;
+            Step4.Text = "● Установка соединения"; Step4.Foreground = green;
+        }
+        else if (msg.Contains("подключен"))
+        {
+            Step4.Text = "✓ Установка соединения"; Step4.Foreground = green;
+        }
+        else if (msg.Contains("UDP"))
+        {
+            Step1.Text = "✓ Подготовка"; Step1.Foreground = green;
+            Step2.Text = "○ Сбор ICE кандидатов"; Step2.Foreground = gray;
+            Step3.Text = "○ Обмен SDP"; Step3.Foreground = gray;
+            Step4.Text = "● Подключение по UDP"; Step4.Foreground = green;
+        }
+    }
 }
