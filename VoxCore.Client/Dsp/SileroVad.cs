@@ -1,5 +1,7 @@
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
+using System.IO;
 
 namespace VoxCore.Client.Dsp;
 
@@ -104,6 +106,8 @@ public sealed class SileroVad : IDisposable
                     for (int i = 0; i < StateSize; i++) _state[i] = dt[i / 128, 0, i % 128];
             }
         }
+        // Debug log
+        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "VoxCore", "vad_debug.log"), $"{DateTime.UtcNow:HH:mm:ss.fff} VAD prob={prob:F3} hang={_hangoverLeft}\n"); } catch { }
         return prob;
     }
 
