@@ -408,11 +408,12 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         var offer = _pc.createOffer(null);
         _pc.setLocalDescription(offer);
+        Log($"OFFER SDP:\n{offer.sdp}");
 
         StatusChanged?.Invoke("отправка offer, ожидание ICE...");
 
         var (answerSdp, _) = await _api.WebRTCOfferAsync(_roomId, offer.sdp);
-        Log($"answer received ({answerSdp.Length} chars)");
+        Log($"ANSWER SDP:\n{answerSdp}");
         var answer = new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = answerSdp };
         var res = _pc.setRemoteDescription(answer);
         Log($"setRemoteDescription: {res}");
