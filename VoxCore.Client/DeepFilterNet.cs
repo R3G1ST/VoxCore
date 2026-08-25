@@ -91,6 +91,39 @@ public sealed class DeepFilterNet : IDisposable
         }
     }
 
+    /// <summary>Прогрев: первые run у плагина идут по медленному пути (RTF до 3),
+    /// что даёт артефакт на первом кадре звонка. Прокручиваем тишину до реального аудио.</summary>
+    public void Warmup(int frames = 5)
+    {
+        if (_handle == 0) return;
+        var silent = new float[480];
+        var sink = new float[480];
+        for (int i = 0; i < frames; i++)
+            ProcessInternal(silent, sink);
+    }
+
+    private unsafe void ProcessInternal(ReadOnlySpan<float> input, Span<float> output)
+    {
+        const int hop = 480;
+        fixed (float* pCtrl = _ctrlPorts)
+        {
+            input[..hop].CopyTo(_inChunk);
+            fixed (float* pIn = _inChunk, pOut = _outChunk)
+            {
+                _connectPortFn(_handle, 0, pIn);
+                _connectPortFn(_handle, 1, pOut);
+                _connectPortFn(_handle, 2, pCtrl);
+                _connectPortFn(_handle, 3, pCtrl + 1);
+                _connectPortFn(_handle, 4, pCtrl + 2);
+                _connectPortFn(_handle, 5, pCtrl + 3);
+                _connectPortFn(_handle, 6, pCtrl + 4);
+                _connectPortFn(_handle, 7, pCtrl + 5);
+                _runFn(_handle, (uint)hop);
+            }
+            _outChunk.CopyTo(output[..hop]);
+        }
+    }
+
     public unsafe void Process(ReadOnlySpan<float> input, Span<float> output, int sampleCount)
     {
         if (_handle == 0) { input[..sampleCount].CopyTo(output); return; }

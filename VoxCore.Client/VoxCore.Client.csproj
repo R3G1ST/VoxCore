@@ -13,7 +13,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.1.2-beta</Version>
+    <Version>1.1.3-beta</Version>
     <Product>VoxCore</Product>
     <AssemblyTitle>VoxCore</AssemblyTitle>
     <Description>VoxCore</Description>
@@ -26,6 +26,12 @@
     <None Include="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="SIPSorcery" Version="10.0.16" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
+    <!-- WinAppSDK 2.4 тянет Windows.AI.MachineLearning, который подсовывает свою
+         Microsoft.ML.OnnxRuntime.dll (v0.0.0.0) и ломает SileroVad ("нет модели").
+         Исключаем только managed-сборку WAIM; нативный onnxruntime остаётся (forward-compatible). -->
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.1.74">
+      <ExcludeAssets>lib</ExcludeAssets>
+    </PackageReference>
     <None Include="models\silero_vad.onnx" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native\webrtc-apm.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\webrtc-apm.dll')" />
     <None Include="native\opus.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\opus.dll')" />

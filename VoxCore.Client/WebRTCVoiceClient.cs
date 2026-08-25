@@ -182,6 +182,7 @@ public sealed class WebRTCVoiceClient : IDisposable
             var dfApp = Path.Combine(AppContext.BaseDirectory, "native", "deep_filter_ladspa.dll");
             var dfPath = File.Exists(dfLocal) ? dfLocal : dfApp;
             _deepFilter = new DeepFilterNet(dfPath, SampleRate, settings.DfAttLim);
+            try { _deepFilter.Warmup(); } catch { /* прогрев не критичен */ }
             Log("DeepFilterNet3 loaded");
         }
         catch (Exception ex)
