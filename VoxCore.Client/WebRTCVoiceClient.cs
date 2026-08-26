@@ -674,7 +674,13 @@ public sealed class WebRTCVoiceClient : IDisposable
             _gate.Process(frame);
 
             // 10) Если VAD молчит — буферизуем pre-roll, не отправляем
-            if (!vadActive)
+            // BYPASS: отправляем если микрофон не замьючен И есть звук (энергия > порога)
+            float energy = 0f;
+            for (int i = 0; i < FrameSize; i++) energy += frame[i] * frame[i];
+            energy = MathF.Sqrt(energy / FrameSize);
+            bool hasAudio = energy > 0.005f; // ~-46dB порог
+            bool shouldSend = !MicMuted && hasAudio;
+            if (!shouldSend)
             {
                 lock (_preroll)
                 {
