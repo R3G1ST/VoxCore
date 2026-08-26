@@ -14,8 +14,8 @@ public sealed class AppSettings
     public bool NoiseSuppression { get; set; } = true;
     public bool AgcEnabled { get; set; } = true;
     public double DfAttLim { get; set; } = 60.0;
-    public double VadThreshold { get; set; } = 0.3;
-    public float PreVadGain { get; set; } = 2.0f;
+    public double VadThreshold { get; set; } = 0.1;
+    public float PreVadGain { get; set; } = 3.0f;
     public double EqLow { get; set; }
     public double EqMid { get; set; }
     public double EqHigh { get; set; }
@@ -37,7 +37,16 @@ public sealed class AppSettings
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+            {
+                var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath));
+                if (loaded is not null)
+                {
+                    // Ensure VAD settings are not stuck at old defaults
+                    if (loaded.VadThreshold > 0.5) loaded.VadThreshold = 0.1;
+                    if (loaded.PreVadGain < 2.0f) loaded.PreVadGain = 3.0f;
+                    return loaded;
+                }
+            }
         }
         catch { }
         return new AppSettings();
