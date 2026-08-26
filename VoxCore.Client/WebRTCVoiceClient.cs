@@ -602,8 +602,8 @@ public sealed class WebRTCVoiceClient : IDisposable
                 foreach (var s in _speakers.Values) pulled += s.Jb.PulledFrames;
                 double lossRate = pulled + l > 0 ? (double)l / (pulled + l) : 0;
                 int target = 64000;
-                if (lossRate > 0.05 || t > 150) target = 32000;
-                else if (lossRate > 0.02 || t > 100) target = 48000;
+                if (lossRate > 0.10 || t > 200) target = 48000;  // floor 48k (32k sounds bad)
+                else if (lossRate > 0.05 || t > 150) target = 56000;
                 if (_encoder != null && _encoder.Bitrate != target)
                 {
                     _encoder.Bitrate = target;

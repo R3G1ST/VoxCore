@@ -13,8 +13,8 @@ namespace VoxCore.Client.Dsp;
 public sealed class AdaptiveJitterBuffer
 {
     private const int FrameSamples = 960;   // 20ms @48k
-    private const int MinTargetMs = 60;
-    private const int MaxTargetMs = 300;
+    private const int MinTargetMs = 40;
+    private const int MaxTargetMs = 200;
 
     private readonly SortedDictionary<int, short[]> _slots = new();
     private readonly Queue<double> _arrivalDeltas = new();
