@@ -52,6 +52,10 @@ public sealed class VoiceClient : IDisposable
     public event Action<string>? SpeakerStarted;
     public event Action<string>? SpeakerStopped;
 
+    public int LastPingMs { get; private set; } = -1;
+    public double VadProb => _dsp?.VadProb ?? 0;
+    public bool IsGateOpen => true; // UDP gate always open (energy-based VAD controls sending)
+
     public bool OpenMic { get; set; }
     public bool MicMuted { get; set; }
     public bool PlaybackMuted { get; set; }
@@ -104,7 +108,7 @@ public void Connect(string server, int port, string room, string name, string pa
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
         _playbackBuffer = new BufferedWaveProvider(waveFormat)
         {
-            BufferDuration = TimeSpan.FromMilliseconds(200),
+            BufferDuration = TimeSpan.FromMilliseconds(400),
             DiscardOnBufferOverflow = true
         };
         _playback = new WaveOutEvent();
@@ -402,13 +406,15 @@ public void Disconnect()
         {
             if (_udp is not null && _room.Length <= 255)
             {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var packet = new byte[2 + _room.Length];
                 packet[0] = 0x04;
                 packet[1] = (byte)_room.Length;
                 Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
                 try { _udp.Send(packet, packet.Length); } catch { }
+                LastPingMs = (int)sw.ElapsedMilliseconds;
             }
-            Thread.Sleep(5000);
+            Thread.Sleep(3000);
         }
     }
 

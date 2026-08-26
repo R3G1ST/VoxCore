@@ -142,13 +142,13 @@ public sealed class VoiceDspPipeline : IDisposable
             var _ = _vad?.Process(frame) ?? true;
             var prob = _vad?.LastProb ?? 1.0;
             vadActiveRaw = prob >= _vadThreshold;
-            // Energy fallback: if Silero returns near-zero, use RMS energy
-            if (!vadActiveRaw && prob < 0.01)
+            // Energy fallback: if Silero broken, use RMS energy
+            if (!vadActiveRaw)
             {
                 double sum = 0;
                 for (int i = 0; i < _frameSize; i++) sum += frame[i] * frame[i];
                 double rms = Math.Sqrt(sum / _frameSize);
-                vadActiveRaw = rms > 0.01; // -40dBFS
+                vadActiveRaw = rms > 0.002;
             }
         }
         catch { vadActiveRaw = true; }

@@ -108,6 +108,9 @@ public sealed partial class SettingsView : UserControl
     {
         if (_voice is null) return;
 
+        var webrtcConnected = _webrtc?.IsConnected == true;
+        var udpConnected = !webrtcConnected && _voice.IsConnected;
+
         HpfDot.Fill = Green();
         HpfStatus.Text = "активен";
         HpfStatus.Foreground = Green();
@@ -118,7 +121,7 @@ public sealed partial class SettingsView : UserControl
         AecStatus.Foreground = aecOn ? Green() : Gray();
 
         var bitrate = _webrtc?.BitrateKbps ?? 0;
-        OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "48 kHz моно";
+        OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "64 kbps";
 
         var nsOn = NsToggle.IsOn;
         RnnoiseDot.Fill = nsOn ? Green() : Red();
@@ -127,23 +130,12 @@ public sealed partial class SettingsView : UserControl
 
         var dfLoaded = _webrtc?.IsDeepFilterLoaded == true;
         DfDot.Fill = dfLoaded ? Green() : Gray();
-        DfStatus.Text = dfLoaded ? "загружен" : "нет DLL в %LOCALAPPDATA%\\VoxCore\\native";
+        DfStatus.Text = dfLoaded ? "загружен" : "нет DLL";
         DfStatus.Foreground = dfLoaded ? Green() : Gray();
 
-        var agcOn = AgcToggle.IsOn && _webrtc != null;
-        if (agcOn)
-        {
-            AgcDot.Fill = Green();
-            double gdb = _webrtc!.AgcGainDb;
-            AgcStatus.Text = $"активен {gdb:+0;-0;0}dB";
-            AgcStatus.Foreground = Green();
-        }
-        else
-        {
-            AgcDot.Fill = Gray();
-            AgcStatus.Text = "выключено";
-            AgcStatus.Foreground = Gray();
-        }
+        AgcDot.Fill = AgcToggle.IsOn ? Green() : Gray();
+        AgcStatus.Text = AgcToggle.IsOn ? "активен" : "выключено";
+        AgcStatus.Foreground = AgcToggle.IsOn ? Green() : Gray();
 
         bool dredOn = _webrtc?.IsDredActive == true;
         bool fecOn = dredOn || _webrtc?.IsFec == true;
@@ -151,14 +143,8 @@ public sealed partial class SettingsView : UserControl
         FecStatus.Text = dredOn ? "DRED 40ms" : (fecOn ? "FEC" : "выключено");
         FecStatus.Foreground = fecOn ? Green() : Gray();
 
-        var vadLoaded = _webrtc?.IsVadLoaded == true;
-        if (!vadLoaded)
-        {
-            VadDot.Fill = Gray();
-            VadStatus.Text = "нет модели";
-            VadStatus.Foreground = Gray();
-        }
-        else
+        // VAD
+        if (webrtcConnected && _webrtc?.IsVadLoaded == true)
         {
             double p = _webrtc!.VadProb;
             double t = _webrtc.VadThreshold;
@@ -167,14 +153,26 @@ public sealed partial class SettingsView : UserControl
             VadStatus.Text = $"{p:0.00} / {t:0.00} {(speaking ? "речь" : "тишина")}";
             VadStatus.Foreground = speaking ? Green() : Yellow();
         }
+        else if (udpConnected)
+        {
+            double p = _voice.VadProb;
+            double t = 0.1;
+            bool speaking = p >= t;
+            VadDot.Fill = speaking ? Green() : Yellow();
+            VadStatus.Text = $"{p:0.00} / {t:0.00} {(speaking ? "речь" : "тишина")}";
+            VadStatus.Foreground = speaking ? Green() : Yellow();
+        }
+        else
+        {
+            VadDot.Fill = Gray();
+            VadStatus.Text = "—";
+            VadStatus.Foreground = Gray();
+        }
 
-        bool gateOpen = _webrtc?.IsGateOpen ?? false;
+        bool gateOpen = _webrtc?.IsGateOpen == true || udpConnected;
         GateDot.Fill = gateOpen ? Green() : Gray();
         GateStatus.Text = gateOpen ? "открыт" : "зажат (-40dB)";
         GateStatus.Foreground = gateOpen ? Green() : Gray();
-
-        var webrtcConnected = _webrtc?.IsConnected == true;
-        var udpConnected = !webrtcConnected && _voice.IsConnected;
         if (webrtcConnected)
         {
             ConnDot.Fill = Green();
@@ -208,7 +206,7 @@ public sealed partial class SettingsView : UserControl
             TurnStatus.Text = $"{_settings?.Server?.Split(':')[0] ?? "?"}:3478";
         }
 
-        int ping = _webrtc?.LastPingMs ?? -1;
+        int ping = _webrtc?.IsConnected == true ? _webrtc.LastPingMs : (_voice?.LastPingMs ?? -1);
         if (ping < 0)
         {
             PingDot.Fill = Gray();
