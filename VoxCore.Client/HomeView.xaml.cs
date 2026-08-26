@@ -581,21 +581,21 @@ public sealed partial class HomeView : UserControl
         presenterStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0, 5, 0, 5)));
         menu.MenuFlyoutPresenterStyle = presenterStyle;
 
-        menu.Items.Add(MakeMenuItem("Профиль", () => ShowProfile(name, userId)));
-        if (isFriend) menu.Items.Add(MakeMenuItem("Начать звонок", () => StartCall(name, userId)));
+        menu.Items.Add(MakeMenuItem("Досье пилота", () => ShowProfile(name, userId)));
+        if (isFriend) menu.Items.Add(MakeMenuItem("Начать голографическую связь", () => StartCall(name, userId)));
         menu.Items.Add(MakeMenuItem("Добавить заметку", () => AddNote(name), subtitle: "Видна только вам"));
-        if (isFriend) menu.Items.Add(MakeMenuItem("Закрыть ЛС", () => CloseDmFor(name)));
+        if (isFriend) menu.Items.Add(MakeMenuItem("Закрыть прямую передачу", () => CloseDmFor(name)));
 
         menu.Items.Add(new MenuFlyoutSeparator());
 
-        var apps = MakeSubItem("Приложения");
-        apps.Items.Add(MakeMenuItem("Скопировать ник", () => CopyText(name)));
+        var apps = MakeSubItem("Инструменты");
+        apps.Items.Add(MakeMenuItem("Скопировать позывной", () => CopyText(name)));
         apps.Items.Add(MakeMenuItem("Скопировать ID", () => CopyText(userId.ToString())));
         menu.Items.Add(apps);
 
-        var invite = MakeSubItem("Пригласить на сервер");
+        var invite = MakeSubItem("Пригласить в звёздную систему");
         if (_channels.Count == 0)
-            invite.Items.Add(MakeMenuItem("нет каналов", null));
+            invite.Items.Add(MakeMenuItem("нет секторов", null));
         else
             foreach (var ch in _channels)
             {
@@ -605,9 +605,9 @@ public sealed partial class HomeView : UserControl
         menu.Items.Add(invite);
 
         if (!isFriend)
-            menu.Items.Add(MakeMenuItem("Добавить в друзья", () => AddFriendFromMenu(name)));
+            menu.Items.Add(MakeMenuItem("Позвать в экипаж", () => AddFriendFromMenu(name)));
 
-        menu.Items.Add(MakeMenuItem("Игнорировать", () => IgnoreUser(name)));
+        menu.Items.Add(MakeMenuItem("Изолировать", () => IgnoreUser(name)));
         menu.Items.Add(MakeMenuItem("Заблокировать", () => BlockUser(name), danger: true));
 
         menu.ShowAt(anchor, pos);

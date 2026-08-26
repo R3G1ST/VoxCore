@@ -1,0 +1,75 @@
+<UserControl
+    x:Class="VoxCore.Client.BootSequenceView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="#030306">
+
+    <Grid x:Name="RootGrid" Width="1100" Height="700" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="48" />
+        </Grid.RowDefinitions>
+
+        <!-- Logo + Title -->
+        <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <!-- VOXCORE Logo -->
+            <TextBlock
+                x:Name="LogoText"
+                Text="VOXCORE"
+                FontFamily="Cascadia Code"
+                FontSize="48"
+                FontWeight="Bold"
+                Foreground="#00e5ff"
+                HorizontalAlignment="Center"
+                CharacterSpacing="200"
+                Opacity="0" />
+
+            <!-- Tagline -->
+            <TextBlock
+                x:Name="TaglineText"
+                Text="// THE NEXUS"
+                FontFamily="Cascadia Code"
+                FontSize="14"
+                Foreground="#5a5a6a"
+                HorizontalAlignment="Center"
+                Margin="0,8,0,0"
+                Opacity="0" />
+
+            <!-- Progress bar container -->
+            <Border
+                x:Name="ProgressContainer"
+                CornerRadius="4"
+                Background="#181820"
+                Width="400"
+                Height="4"
+                Margin="0,48,0,0"
+                HorizontalAlignment="Center"
+                Opacity="0">
+                <Border x:Name="ProgressFill" CornerRadius="4" Background="#00e5ff" Width="0" HorizontalAlignment="Left" />
+            </Border>
+
+            <!-- Stage text -->
+            <TextBlock
+                x:Name="StageText"
+                Text=""
+                FontFamily="Cascadia Code"
+                FontSize="11"
+                Foreground="#5a5a6a"
+                HorizontalAlignment="Center"
+                Margin="0,16,0,0"
+                Opacity="0" />
+        </StackPanel>
+
+        <!-- Bottom status -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock
+                x:Name="StatusText"
+                Text="VOXCORE v1.1.3-beta"
+                FontFamily="Cascadia Code"
+                FontSize="10"
+                Foreground="#3a3a4a"
+                HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

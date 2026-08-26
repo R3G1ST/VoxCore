@@ -45,7 +45,7 @@
         <!-- HEADER -->
         <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,14,0,0">
             <Button x:Name="HubHomeBtn" Style="{StaticResource NeonBtn}" BorderBrush="{StaticResource NeonStroke}"
-                    Width="44" Height="36" Padding="0" Click="HubHomeBtn_Click" ToolTipService.ToolTip="главная — каналы, чаты, друзья">
+                    Width="44" Height="36" Padding="0" Click="HubHomeBtn_Click" ToolTipService.ToolTip="главная — секторы, передачи, союзники">
                 <Border Background="#5865f2" CornerRadius="6" Width="22" Height="22">
                     <TextBlock Text="V" FontFamily="Cascadia Code" FontWeight="Bold" Foreground="White"
                                FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -57,7 +57,7 @@
                            FontWeight="Bold" Foreground="{StaticResource NeonText}" />
             </Border>
             <Button x:Name="HubSettingsBtn" Style="{StaticResource NeonBtn}" BorderBrush="{StaticResource NeonStroke}"
-                    Width="44" Height="36" Padding="0" Click="GearBtn_Click" ToolTipService.ToolTip="настройки">
+                    Width="44" Height="36" Padding="0" Click="GearBtn_Click" ToolTipService.ToolTip="навигационная консоль">
                 <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="19" />
             </Button>
         </StackPanel>
@@ -68,7 +68,7 @@
             <StackPanel x:Name="StreamList" Spacing="6" />
             <Border x:Name="NoStreamBorder" Background="#660d0f1e" BorderBrush="#334" BorderThickness="1"
                     CornerRadius="8" Padding="10,6" HorizontalAlignment="Left">
-                <TextBlock Text="тишина — никто не говорит" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
+                <TextBlock Text="тишина — никто не передаёт" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
             </Border>
         </StackPanel>
 
@@ -100,7 +100,7 @@
                 </StackPanel>
             </Border>
             <Button x:Name="EndCallBtn" Style="{StaticResource NeonBtn}" BorderBrush="#ff3b5c" Foreground="#ff5c78"
-                    Click="EndCallBtn_Click" ToolTipService.ToolTip="покинуть канал">
+                    Click="EndCallBtn_Click" ToolTipService.ToolTip="покинуть сектор">
                 <TextBlock Text="END CALL" FontWeight="Bold" />
             </Button>
         </StackPanel>

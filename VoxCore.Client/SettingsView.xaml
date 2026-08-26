@@ -42,7 +42,7 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,12">
             <Border Padding="24,8" CornerRadius="12" BorderThickness="2"
                     BorderBrush="{StaticResource NeonStroke}" Background="#d90d0f1e">
-                <TextBlock Text="НАСТРОЙКИ" FontFamily="Cascadia Code" FontSize="15"
+                <TextBlock Text="НАВИГАЦИОННАЯ КОНСОЛЬ" FontFamily="Cascadia Code" FontSize="15"
                            FontWeight="Bold" Foreground="#eaf7ff" />
             </Border>
         </StackPanel>
@@ -54,7 +54,7 @@
                 <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"
                         CornerRadius="14" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="ГОЛОСОВОЙ PIPELINE" FontFamily="Cascadia Code" FontSize="11" Foreground="#7fe3ff" />
+                        <TextBlock Text="ГОЛОГРАФИЧЕСКИЙ PIPELINE" FontFamily="Cascadia Code" FontSize="11" Foreground="#7fe3ff" />
 
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -161,7 +161,7 @@
                 <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"
                         CornerRadius="14" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="ПОДКЛЮЧЕНИЕ" FontFamily="Cascadia Code" FontSize="11" Foreground="#ff9fe8" />
+                        <TextBlock Text="СВЯЗЬ" FontFamily="Cascadia Code" FontSize="11" Foreground="#ff9fe8" />
 
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -203,7 +203,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Ellipse x:Name="PingDot" Width="8" Height="8" Fill="#5a617a" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock Grid.Column="1" Text="Пинг до сервера" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="ПИНГ ДО ЗВЁЗДНОЙ СИСТЕМЫ" FontFamily="Cascadia Code" FontSize="12" Foreground="#dbe6ff" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="PingStatus" Text="—" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" VerticalAlignment="Center"/>
                         </Grid>
 
@@ -233,14 +233,14 @@
 
                 <!-- MIC CONTROL -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="МИКРОФОН" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
+                    <TextBlock Text="МИКРОФОН ПИЛОТА" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
                     <ComboBox x:Name="MicCombo" MinWidth="300" HorizontalAlignment="Left"
                               FontFamily="Cascadia Code" FontSize="12"
                               Background="#0a0c18" Foreground="#dbe6ff" BorderBrush="#00e5ff" />
                 </StackPanel>
 
                 <StackPanel Spacing="8">
-                    <TextBlock Text="ГРОМКОСТЬ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
+                    <TextBlock Text="ГРОМКОСТЬ МИКРОФОНА ПИЛОТА" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -332,7 +332,7 @@
                 <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"
                         CornerRadius="14" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="ТЕСТ МИКРОФОНА" FontFamily="Cascadia Code" FontSize="11" Foreground="#7fe3ff" />
+                        <TextBlock Text="ТЕСТ МИКРОФОНА ПИЛОТА" FontFamily="Cascadia Code" FontSize="11" Foreground="#7fe3ff" />
                         <CheckBox x:Name="LoopbackCheck" Content="слушать себя" FontFamily="Cascadia Code"
                                   FontSize="12" Foreground="#dbe6ff" />
                         <Button x:Name="TestBtn" Content="НАЧАТЬ ТЕСТ" Style="{ThemeResource VcSmallButton}"

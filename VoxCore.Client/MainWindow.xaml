@@ -17,8 +17,8 @@
                 </Border>
                 <TextBlock Text="VoxCore" FontFamily="Cascadia Code" FontSize="13" FontWeight="SemiBold"
                            Foreground="#dbdee1" VerticalAlignment="Center" />
-                <TextBlock Text="— голосовой чат для игр" FontFamily="Cascadia Code" FontSize="11"
-                           Foreground="#949ba4" VerticalAlignment="Center" />
+                <TextBlock Text="// THE NEXUS" FontFamily="Cascadia Code" FontSize="11"
+                           Foreground="#5a5a6a" VerticalAlignment="Center" />
             </StackPanel>
             <Rectangle Width="140" HorizontalAlignment="Right" Opacity="0" />
         </Grid>
@@ -27,6 +27,7 @@
             <local:VoiceGraphView x:Name="HubView" />
             <local:HomeView x:Name="HomeView" Visibility="Collapsed" />
             <local:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
+            <local:BootSequenceView x:Name="BootView" />
 
             <Grid x:Name="OldUi" Background="#0a0c18" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
@@ -42,9 +43,9 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" Padding="8,10,8,4" Spacing="4">
-                <Button x:Name="ChannelsTabBtn" Content="КАНАЛЫ" Style="{ThemeResource VcSmallButton}"
+                <Button x:Name="ChannelsTabBtn" Content="СЕКТОРЫ" Style="{ThemeResource VcSmallButton}"
                         Background="#0d3a54" Foreground="#7fe3ff" Click="ChannelsTabBtn_Click" />
-                <Button x:Name="FriendsTabBtn" Content="ДРУЗЬЯ" Style="{ThemeResource VcSmallButton}"
+                <Button x:Name="FriendsTabBtn" Content="СОЮЗНИКИ" Style="{ThemeResource VcSmallButton}"
                         Background="#0d0f1e" Foreground="#9fefff" Click="FriendsTabBtn_Click" />
             </StackPanel>
 
@@ -60,12 +61,12 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="ГОЛОСОВЫЕ КАНАЛЫ" FontFamily="Cascadia Code" FontSize="11"
+                        <TextBlock Text="ГОЛОГРАФИЧЕСКИЕ СВЯЗИ" FontFamily="Cascadia Code" FontSize="11"
                                    Foreground="#949ba4" VerticalAlignment="Center" />
                         <Button Grid.Column="1" x:Name="AddChannelBtn" Content="＋" FontSize="18"
                                 Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0"
                                 Foreground="#949ba4" Click="AddChannelBtn_Click"
-                                ToolTipService.ToolTip="создать канал" />
+                                ToolTipService.ToolTip="создать сектор" />
                     </Grid>
                 </Border>
 
@@ -164,7 +165,7 @@
                             </StackPanel>
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="МОИ ДРУЗЬЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
+                                <TextBlock Text="МОИ СОЮЗНИКИ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
                                            Padding="8,4" />
                                 <ListView x:Name="FriendsList" Background="Transparent" BorderThickness="0"
                                           SelectionMode="None">
@@ -196,7 +197,7 @@
                                                     <Button Content="💬" Width="28" Height="28" Padding="0"
                                                             Background="Transparent" BorderThickness="0" Foreground="#949ba4"
                                                             Tag="{Binding Id}" Click="FriendDm_Click"
-                                                            ToolTipService.ToolTip="написать" />
+                                                            ToolTipService.ToolTip="прямая передача" />
                                                     <Button Content="✕" Width="28" Height="28" Padding="0"
                                                             Background="Transparent" BorderThickness="0" Foreground="#949ba4"
                                                             Tag="{Binding Id}" Click="FriendRemove_Click" />
@@ -230,9 +231,9 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="🔊" FontSize="16" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="ChannelNameText" Text="не в канале" FontFamily="Cascadia Code"
+                        <TextBlock x:Name="ChannelNameText" Text="нет связи" FontFamily="Cascadia Code"
                                    FontSize="16" FontWeight="SemiBold" Foreground="White" />
-                        <TextBlock x:Name="ChannelStatusText" Text="выбери канал слева" FontFamily="Cascadia Code"
+                        <TextBlock x:Name="ChannelStatusText" Text="выбери сектор" FontFamily="Cascadia Code"
                                    FontSize="11" Foreground="#949ba4" />
                     </StackPanel>
                     <Button Grid.Column="2" x:Name="LeaveChannelBtn" Content="ПОКИНУТЬ" Style="{ThemeResource VcSmallButton}"
@@ -243,7 +244,7 @@
             <StackPanel x:Name="VoiceStatusPanel" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                 <StackPanel Spacing="6">
                     <TextBlock Text="🔊" FontSize="40" HorizontalAlignment="Center" />
-                    <TextBlock x:Name="StatusText" Text="выбери канал слева" FontFamily="Cascadia Code"
+                    <TextBlock x:Name="StatusText" Text="выбери сектор" FontFamily="Cascadia Code"
                                FontSize="14" Foreground="#b5bac1" HorizontalAlignment="Center" />
                     <TextBlock x:Name="ModeHintText" Text="микрофон активен — просто говори"
                                FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
@@ -275,7 +276,7 @@
                         <Button Grid.Column="2" Content="📞" Width="32" Height="32" Padding="0"
                                 Background="#ff3b5c" Foreground="White" BorderThickness="0" CornerRadius="6"
                                 FontSize="14" Click="LeaveChannelBtn_Click"
-                                ToolTipService.ToolTip="отключиться" />
+                                ToolTipService.ToolTip="разорвать связь" />
                     </Grid>
 
                     <!-- Screen share status -->
@@ -303,7 +304,7 @@
                             <ToggleButton x:Name="ScreenShareBtn" Width="32" Height="32" Padding="0"
                                           Background="Transparent" BorderThickness="0" FontSize="14"
                                           Checked="ScreenShareBtn_Checked" Unchecked="ScreenShareBtn_Unchecked"
-                                          ToolTipService.ToolTip="демонстрация экрана">
+                                          ToolTipService.ToolTip="передача экрана">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -318,21 +319,21 @@
                             <!-- Video -->
                             <ToggleButton x:Name="VideoBtn" Width="32" Height="32" Padding="0"
                                           Background="Transparent" BorderThickness="0" FontSize="14"
-                                          ToolTipService.ToolTip="видео">
+                                          ToolTipService.ToolTip="голографическая передача">
                                 <TextBlock Text="📹" />
                             </ToggleButton>
                             <!-- Noise Suppression -->
                             <ToggleButton x:Name="NoiseSupBtn" Width="32" Height="32" Padding="0"
                                           Background="Transparent" BorderThickness="0" FontSize="14"
                                           IsChecked="True"
-                                          ToolTipService.ToolTip="шумоподавление">
+                                          ToolTipService.ToolTip="подавление шума">
                                 <TextBlock Text="🎧" />
                             </ToggleButton>
                             <!-- Audio Hub -->
                             <Button x:Name="AudioHubBtn" Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0" FontSize="14"
                                     Click="AudioHubBtn_Click"
-                                    ToolTipService.ToolTip="аудио-хаб — сеть канала">
+                                    ToolTipService.ToolTip="аудио-хаб — сеть сектора">
                                 <TextBlock Text="🌌" />
                             </Button>
                         </StackPanel>
@@ -392,7 +393,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="ChannelChatInput" PlaceholderText="напиши сообщение..."
+                    <TextBox x:Name="ChannelChatInput" PlaceholderText="введи звёздный журнал..."
                              FontFamily="Cascadia Code" FontSize="12" Background="#0a0c18" Foreground="#dbdee1"
                              BorderBrush="#2a2f55" BorderThickness="1" CornerRadius="8" Padding="12,8"
                              KeyDown="ChannelChatInput_KeyDown" />
@@ -469,7 +470,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="DmChatInput" PlaceholderText="напиши сообщение..."
+                    <TextBox x:Name="DmChatInput" PlaceholderText="введи звёздный журнал..."
                              FontFamily="Cascadia Code" FontSize="12" Background="#0a0c18" Foreground="#dbdee1"
                              BorderBrush="#2a2f55" BorderThickness="1" CornerRadius="8" Padding="12,8"
                              KeyDown="DmChatInput_KeyDown" />
@@ -488,7 +489,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="УЧАСТНИКИ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
+            <TextBlock Grid.Row="0" Text="ЭКИПАЖ" FontFamily="Cascadia Code" FontSize="11" Foreground="#949ba4"
                        Padding="16,14" />
             <ListView x:Name="MembersList" Grid.Row="1" Background="Transparent" BorderThickness="0"
                       SelectionMode="None" Padding="8,0,8,8" IsItemClickEnabled="True"
@@ -570,7 +571,7 @@
                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock x:Name="UserNameText" FontFamily="Cascadia Code" FontSize="13" FontWeight="SemiBold"
                                Foreground="White" />
-                    <TextBlock x:Name="UserStatusText" Text="в сети" FontFamily="Cascadia Code" FontSize="10"
+                    <TextBlock x:Name="UserStatusText" Text="на орбите" FontFamily="Cascadia Code" FontSize="10"
                                Foreground="#3ba55d" />
                 </StackPanel>
                 <!-- Mic button with dropdown arrow -->
@@ -582,7 +583,7 @@
                     <ToggleButton x:Name="MicMuteBtn" Content="🎙️" Width="28" Height="28" Padding="0"
                                   FontSize="12" Background="Transparent" BorderThickness="0"
                                   Checked="MicMuteBtn_Checked" Unchecked="MicMuteBtn_Unchecked"
-                                  ToolTipService.ToolTip="микрофон" />
+                                  ToolTipService.ToolTip="заглушить" />
                     <Border Grid.Column="1" Width="12" Height="28" Background="Transparent"
                             CornerRadius="0,4,4,0" VerticalAlignment="Center">
                         <TextBlock Text="▾" FontSize="8" Foreground="#949ba4" HorizontalAlignment="Center"
@@ -598,7 +599,7 @@
                     <ToggleButton x:Name="HeadMuteBtn" Content="🔊" Width="28" Height="28" Padding="0"
                                   FontSize="12" Background="Transparent" BorderThickness="0"
                                   Checked="HeadMuteBtn_Checked" Unchecked="HeadMuteBtn_Unchecked"
-                                  ToolTipService.ToolTip="наушники" />
+                                  ToolTipService.ToolTip="защитить" />
                     <Border Grid.Column="1" Width="12" Height="28" Background="Transparent"
                             CornerRadius="0,4,4,0" VerticalAlignment="Center">
                         <TextBlock Text="▾" FontSize="8" Foreground="#949ba4" HorizontalAlignment="Center"
@@ -608,7 +609,7 @@
                 <!-- Settings -->
                 <Button x:Name="SettingsBtn" Grid.Column="4" Content="⚙️" Width="28" Height="28" Padding="0"
                         FontSize="12" Margin="2,0,0,0" Background="Transparent" BorderThickness="0"
-                        Click="SettingsBtn_Click" ToolTipService.ToolTip="настройки" />
+                        Click="SettingsBtn_Click" ToolTipService.ToolTip="навигационная консоль" />
             </Grid>
         </Border>
             </Grid>

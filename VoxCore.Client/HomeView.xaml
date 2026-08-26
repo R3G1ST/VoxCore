@@ -39,7 +39,7 @@
         <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,14,0,0">
             <Button x:Name="HomeTitleBtn" Style="{StaticResource NeonBtn}" BorderBrush="{StaticResource NeonStroke}"
                     Padding="24,9" CornerRadius="12" Click="HomeTitleBtn_Click"
-                    ToolTipService.ToolTip="аудио-хаб — сеть канала">
+                    ToolTipService.ToolTip="аудио-хаб — сеть сектора">
                 <TextBlock Text="VOXCORE // ДОМОЙ" FontFamily="Cascadia Code" FontSize="15"
                            FontWeight="Bold" Foreground="#eaf7ff" />
             </Button>
@@ -69,12 +69,12 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="ГОЛОСОВЫЕ КАНАЛЫ" FontFamily="Cascadia Code" FontSize="13"
+                        <TextBlock Text="ГОЛОГРАФИЧЕСКИЕ СВЯЗИ" FontFamily="Cascadia Code" FontSize="13"
                                    FontWeight="Bold" Foreground="#7fe3ff" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" />
                         <Button Grid.Column="1" x:Name="AddChannelBtn" Style="{StaticResource NeonBtn}" BorderBrush="{StaticResource NeonStroke}"
                                 Padding="10,5" FontSize="14" Click="AddChannelBtn_Click"
-                                ToolTipService.ToolTip="создать канал">
+                                ToolTipService.ToolTip="создать сектор">
                             <TextBlock Text="＋" />
                         </Button>
                     </Grid>
@@ -101,25 +101,25 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="ДРУЗЬЯ И СООБЩЕНИЯ" FontFamily="Cascadia Code" FontSize="13"
+                    <TextBlock Grid.Row="0" Text="СОЮЗНИКИ И ПЕРЕДАЧИ" FontFamily="Cascadia Code" FontSize="13"
                                FontWeight="Bold" Foreground="#ff9fe8" Margin="0,0,0,10" />
                     <Grid Grid.Row="1" Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="SearchBox" PlaceholderText="ник пользователя..." FontFamily="Cascadia Code"
+                        <TextBox x:Name="SearchBox" PlaceholderText="позывной пилота..." FontFamily="Cascadia Code"
                                  FontSize="12" Background="#0a0c18" Foreground="#dbe6ff" BorderBrush="#2a2f55"
                                  BorderThickness="1" CornerRadius="8" Padding="10,6" KeyDown="SearchBox_KeyDown" />
                         <Button Grid.Column="1" x:Name="SearchBtn" Style="{StaticResource NeonBtn}"
                                 BorderBrush="{StaticResource NeonStroke}" Padding="10,5" Margin="6,0,0,0"
-                                Click="SearchBtn_Click" ToolTipService.ToolTip="найти и добавить">
+                                Click="SearchBtn_Click" ToolTipService.ToolTip="найти и позвать">
                             <TextBlock Text="🔍" FontSize="12" />
                         </Button>
                     </Grid>
                     <StackPanel Grid.Row="2" x:Name="SearchResults" Spacing="4" Margin="0,0,0,8" Visibility="Collapsed" />
                     <StackPanel Grid.Row="3" x:Name="RequestsPanel" Spacing="4" Margin="0,0,0,8" Visibility="Collapsed">
-                        <TextBlock Text="ВХОДЯЩИЕ ЗАПРОСЫ" FontFamily="Cascadia Code" FontSize="10"
+                        <TextBlock Text="ВХОДЯЩИЕ СИГНАЛЫ" FontFamily="Cascadia Code" FontSize="10"
                                    Foreground="#faa61a" />
                         <StackPanel x:Name="RequestsList" Spacing="4" />
                     </StackPanel>
@@ -162,7 +162,7 @@
                     </StackPanel>
                     <Button Grid.Column="3" x:Name="ChatJoinBtn" Style="{StaticResource NeonBtn}"
                             BorderBrush="#00e5ff" Padding="12,6" Visibility="Collapsed" Click="ChatJoinBtn_Click">
-                        <TextBlock Text="ПОДКЛЮЧИТЬСЯ" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Text="ПРИСОЕДИНИТЬСЯ" FontSize="11" FontWeight="Bold" />
                     </Button>
                 </Grid>
             </Border>
@@ -174,7 +174,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="ChatInput" PlaceholderText="напиши сообщение..." FontFamily="Cascadia Code"
+                <TextBox x:Name="ChatInput" PlaceholderText="введи звёздный журнал..." FontFamily="Cascadia Code"
                          FontSize="12" Background="#0a0c18" Foreground="#dbe6ff" BorderBrush="#2a2f55"
                          BorderThickness="1" CornerRadius="8" Padding="12,8" KeyDown="ChatInput_KeyDown" />
                 <Button Grid.Column="1" x:Name="ChatSendBtn" Style="{StaticResource NeonBtn}"

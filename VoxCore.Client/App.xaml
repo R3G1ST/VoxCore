@@ -11,7 +11,10 @@
             <SolidColorBrush x:Key="CardBrush" Color="#08080e" />
             <SolidColorBrush x:Key="BorderBrush" Color="#181820" />
             <SolidColorBrush x:Key="AccentBrush" Color="#00ff88" />
+            <SolidColorBrush x:Key="AccentCyanBrush" Color="#00e5ff" />
+            <SolidColorBrush x:Key="AccentMagentaBrush" Color="#ff2ec4" />
             <SolidColorBrush x:Key="DimBrush" Color="#5a5a6a" />
+            <SolidColorBrush x:Key="TextBrush" Color="#e8e8f0" />
             <SolidColorBrush x:Key="UserColorBrush" Color="#5865f2" />
             <Style x:Key="VcButton" TargetType="Button">
                 <Setter Property="Background" Value="#08080e" />

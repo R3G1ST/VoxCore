@@ -53,6 +53,10 @@ public sealed partial class MainWindow : Window
         catch { _useWebRtc = false; }
 
         InitializeComponent();
+        BootView.BootCompleted += (_, _) =>
+        {
+            BootView.Visibility = Visibility.Collapsed;
+        };
         HubView.Init(_members, _user.Name, _voice, _webrtc, _settings, LeaveChannel);
         HubView.HomeRequested += () => ShowUi(false);
         HubView.SettingsRequested += () => ShowMode("settings");
@@ -228,14 +232,14 @@ public sealed partial class MainWindow : Window
 
     private async Task CreateChannelAsync()
     {
-        var nameBox = new TextBox { PlaceholderText = "название канала" };
-        var passBox = new PasswordBox { PlaceholderText = "пароль (необязательно)" };
+        var nameBox = new TextBox { PlaceholderText = "название сектора" };
+        var passBox = new PasswordBox { PlaceholderText = "ключ доступа (необязательно)" };
         var panel = new StackPanel { Spacing = 10, MinWidth = 320 };
         panel.Children.Add(nameBox);
         panel.Children.Add(passBox);
         var dialog = new ContentDialog
         {
-            Title = "Создать канал",
+            Title = "Создать сектор",
             Content = panel,
             PrimaryButtonText = "СОЗДАТЬ",
             CloseButtonText = "ОТМЕНА",
@@ -264,7 +268,7 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new ContentDialog
         {
-            Title = $"Удалить канал «{ch.Name}»?",
+            Title = $"Удалить сектор «{ch.Name}»?",
             Content = "действие необратимо",
             PrimaryButtonText = "УДАЛИТЬ",
             CloseButtonText = "ОТМЕНА",
@@ -294,10 +298,10 @@ public sealed partial class MainWindow : Window
         string password = "";
         if (ch.HasPassword)
         {
-            var passBox = new PasswordBox { PlaceholderText = "пароль канала" };
+            var passBox = new PasswordBox { PlaceholderText = "ключ доступа сектора" };
             var dialog = new ContentDialog
             {
-                Title = $"Вход в «{ch.Name}»",
+                Title = $"Войти в «{ch.Name}»",
                 Content = passBox,
                 PrimaryButtonText = "ВОЙТИ",
                 CloseButtonText = "ОТМЕНА",
@@ -334,14 +338,14 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                UpdateConnectingOverlay("подключение к WebRTC...");
+                UpdateConnectingOverlay("установка квантовой связи...");
                 var connectTask = _webrtc.ConnectAsync(ch.Id);
                 var completed = await Task.WhenAny(connectTask, Task.Delay(15000));
                 if (completed == connectTask && !connectTask.IsFaulted)
                 {
                     await connectTask;
                     connected = true;
-                    UpdateConnectingOverlay("WebRTC подключен");
+                    UpdateConnectingOverlay("квантовая связь установлена");
                 }
                 else
                 {
@@ -355,7 +359,7 @@ public sealed partial class MainWindow : Window
             {
                 StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
                 WebRTCVoiceClient.Log($"failed: {ex.Message}, fallback to UDP");
-                UpdateConnectingOverlay($"ошибка WebRTC: {ex.Message}");
+                UpdateConnectingOverlay($"ошибка связи: {ex.Message}");
                 _webrtc.Disconnect();
             }
         }
@@ -366,10 +370,10 @@ public sealed partial class MainWindow : Window
             try
             {
                 var host = _settings.Server.Split(':')[0];
-                UpdateConnectingOverlay("подключение по UDP...");
+                UpdateConnectingOverlay("прямая квантовая связь...");
                 _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password);
                 connected = true;
-                UpdateConnectingOverlay("UDP подключен");
+                UpdateConnectingOverlay("прямая связь установлена");
             }
             catch (Exception ex)
             {
@@ -377,7 +381,7 @@ public sealed partial class MainWindow : Window
                 UpdateConnectingOverlay($"UDP failed: {ex.Message}");
                 if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
                 HideConnectingOverlay();
-                await ShowErrorAsync("не удалось подключиться к голосовому каналу");
+                await ShowErrorAsync("не удалось установить голографическую связь");
                 return;
             }
         }
@@ -387,13 +391,13 @@ public sealed partial class MainWindow : Window
 
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
-        ChannelStatusText.Text = connected ? (connected && _webrtc?.IsConnected == true ? "WebRTC подключен" : "UDP подключен") : "не подключен";
+        ChannelStatusText.Text = connected ? (connected && _webrtc?.IsConnected == true ? "квантовая связь" : "прямая связь") : "нет связи";
         LeaveChannelBtn.Visibility = Visibility.Visible;
         VoiceChannelName.Text = ch.Name;
         VoiceServerName.Text = "VoxCore";
         VoiceConnectedPanel.Visibility = Visibility.Visible;
         VoiceStatusPanel.Visibility = Visibility.Collapsed;
-        StatusText.Text = connected ? $"{(_webrtc?.IsConnected == true ? "WebRTC" : "UDP")}: {ch.Name}" : "ошибка";
+        StatusText.Text = connected ? $"{(_webrtc?.IsConnected == true ? "квантовая" : "прямая")} связь: {ch.Name}" : "ошибка";
         ChannelChatPanel.Visibility = Visibility.Visible;
         _lastChannelMsgId = 0;
         _channelMessages.Clear();
@@ -411,14 +415,14 @@ public sealed partial class MainWindow : Window
         _activeScreenShare?.Dispose();
         _activeScreenShare = null;
         _currentChannel = null;
-        ChannelNameText.Text = "не в канале";
-        ChannelStatusText.Text = "выбери канал слева";
+        ChannelNameText.Text = "нет связи";
+        ChannelStatusText.Text = "выбери сектор";
         LeaveChannelBtn.Visibility = Visibility.Collapsed;
         VoiceConnectedPanel.Visibility = Visibility.Collapsed;
         VoiceStatusPanel.Visibility = Visibility.Visible;
         ScreenShareBtn.IsChecked = false;
         ScreenShareDot.Visibility = Visibility.Collapsed;
-        StatusText.Text = "отключено";
+        StatusText.Text = "разорвано";
         ChannelChatPanel.Visibility = Visibility.Collapsed;
         _chatTimer.Stop();
         _channelMessages.Clear();
@@ -452,7 +456,7 @@ public sealed partial class MainWindow : Window
             var reqItems = requests.Select(FriendItem.FromUser).ToList();
             RequestsList.ItemsSource = reqItems;
             RequestsSection.Visibility = reqItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            FriendsTabBtn.Content = reqItems.Count > 0 ? $"ДРУЗЬЯ ({reqItems.Count})" : "ДРУЗЬЯ";
+            FriendsTabBtn.Content = reqItems.Count > 0 ? $"СОЮЗНИКИ ({reqItems.Count})" : "СОЮЗНИКИ";
         }
         catch (ApiException ex) when (ex.Message == "unauthorized")
         {

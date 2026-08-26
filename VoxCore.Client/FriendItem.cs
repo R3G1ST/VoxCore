@@ -12,14 +12,14 @@ public sealed class FriendItem
     public bool Online { get; }
     public string State { get; }
 
-    public string Status => State == "None" ? (Online ? "в сети" : "не в сети") : StateText;
+    public string Status => State == "None" ? (Online ? "на орбите" : "в глубоком космосе") : StateText;
 
     public string StateText => State switch
     {
-        "Friend" => "уже друзья",
-        "Requested" => "запрос отправлен",
-        "Incoming" => "прими запрос во вкладке Друзья",
-        _ => Online ? "в сети" : "не в сети"
+        "Friend" => "уже союзники",
+        "Requested" => "сигнал отправлен",
+        "Incoming" => "прими сигнал во вкладке Союзники",
+        _ => Online ? "на орбите" : "в глубоком космосе"
     };
 
     public SolidColorBrush OnlineBrush =>
