@@ -305,24 +305,31 @@ public sealed class WebRTCVoiceClient : IDisposable
 
     private async Task<int> TryOpenPortsAsync()
     {
-        // 1. Порт для WebRTC UDP (20000-20100 диапазон)
         var localPort = 20000 + (Environment.MachineName.GetHashCode() & 0x3FFF);
         _mappedExternalPort = localPort;
 
-        // 2. Windows Firewall — разрешаем входящие UDP
+        // Windows Firewall — inbound + outbound + TURN allowance
         try
         {
-            var ruleName = "VoxCore-UDP-" + localPort;
-            var psi = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall add rule name=\"{ruleName}\" dir=in action=allow protocol=udp localport={localPort}")
-            {
-                CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
-            };
-            var proc = System.Diagnostics.Process.Start(psi);
-            if (proc != null) { await proc.WaitForExitAsync(); _firewallRuleAdded = true; Log($"Firewall: rule added for UDP {localPort}"); }
+            var appPath = Environment.ProcessPath ?? "";
+            var psi1 = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall add rule name=\"VoxCore-IN-{localPort}\" dir=in action=allow protocol=udp localport={localPort}")
+            { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            var p1 = System.Diagnostics.Process.Start(psi1); if (p1 != null) await p1.WaitForExitAsync();
+
+            var psi2 = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall add rule name=\"VoxCore-OUT\" dir=out action=allow program=\"{appPath}\" enable=yes")
+            { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            var p2 = System.Diagnostics.Process.Start(psi2); if (p2 != null) await p2.WaitForExitAsync();
+
+            var psi3 = new System.Diagnostics.ProcessStartInfo("netsh", "advfirewall firewall add rule name=\"VoxCore-RELAY-IN\" dir=in action=allow protocol=udp localport=49152-65535")
+            { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+            var p3 = System.Diagnostics.Process.Start(psi3); if (p3 != null) await p3.WaitForExitAsync();
+
+            _firewallRuleAdded = true;
+            Log($"Firewall: rules added (in UDP {localPort}, out app, relay in 49152-65535)");
         }
         catch (Exception ex) { Log($"Firewall: failed - {ex.Message}"); }
 
-        // 3. UPnP — открываем порт на роутере
+        // UPnP — открываем порт на роутере
         try
         {
             var discoverer = new Open.Nat.NatDiscoverer();
@@ -330,7 +337,6 @@ public sealed class WebRTCVoiceClient : IDisposable
             var mapping = new Open.Nat.Mapping(Open.Nat.Protocol.Udp, localPort, localPort, "VoxCore-Voice");
             await device.CreatePortMapAsync(mapping);
             Log($"UPnP: mapped port {localPort} on {device}");
-            _mappedExternalPort = localPort;
         }
         catch (Exception ex) { Log($"UPnP: failed ({ex.Message}), will use TURN relay"); }
 
@@ -343,11 +349,15 @@ public sealed class WebRTCVoiceClient : IDisposable
         {
             if (_firewallRuleAdded)
             {
-                var ruleName = "VoxCore-UDP-" + _mappedExternalPort;
-                var psi = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall delete rule name=\"{ruleName}\"")
-                { CreateNoWindow = true, UseShellExecute = false };
-                var proc = System.Diagnostics.Process.Start(psi);
-                if (proc != null) await proc.WaitForExitAsync();
+                var names = new[] { $"VoxCore-IN-{_mappedExternalPort}", "VoxCore-OUT", "VoxCore-RELAY-IN" };
+                foreach (var n in names)
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall delete rule name=\"{n}\"")
+                    { CreateNoWindow = true, UseShellExecute = false };
+                    var proc = System.Diagnostics.Process.Start(psi);
+                    if (proc != null) await proc.WaitForExitAsync();
+                }
+                Log("Firewall: cleanup done");
             }
         }
         catch { }

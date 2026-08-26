@@ -364,7 +364,7 @@ public sealed partial class MainWindow : Window
                     if (errorDetail.Contains("AudioIncompatible"))
                         userAction = "\n\nОбнови друга на v1.1.5-beta — его версия отправляет стерео вместо моно.";
                     else if (errorDetail.Contains("ICE failed") || errorDetail.Contains("таймаут"))
-                        userAction = "\n\nTURN 3478 possibly blocked by firewall. Check:两人 must have direct UDP access or open TURN port.";
+                        userAction = "\n\nUDP подключение заблокировано файрволом.\nВключи VoxCore в Windows Defender Firewall (разреши входящие и исходящие).\nИли попроси друга сделать то же самое.";
                     else if (errorDetail.Contains("unauthorized"))
                         userAction = "\n\n重新 авторизуйся (перезайди в аккаунт).";
                     _lastWebRtcError = errorDetail;
