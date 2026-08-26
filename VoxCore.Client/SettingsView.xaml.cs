@@ -51,6 +51,18 @@ public sealed partial class SettingsView : UserControl
         EqHighText.Text = $"{settings.EqHigh:0} dB";
         LoopbackCheck.IsChecked = false;
 
+        // Server selection
+        var servers = new List<(string Label, string Address)>
+        {
+            ("🇳🇱 NL сервер (Европа)", "194.31.204.5:9988"),
+            ("🇷🇺 RU сервер (Россия)", "89.169.4.132:9990"),
+        };
+        foreach (var (label, _) in servers) ServerCombo.Items.Add(label);
+        var currentServer = settings.Server;
+        ServerCombo.SelectedIndex = servers.FindIndex(s => s.Address == currentServer);
+        if (ServerCombo.SelectedIndex < 0) ServerCombo.SelectedIndex = 0;
+        UpdateServerInfo();
+
         VolumeSlider.Value = 80;
         VolumeText.Text = "80%";
         VolumeSlider.ValueChanged += (_, e) =>
@@ -327,6 +339,10 @@ public sealed partial class SettingsView : UserControl
         _settings.EqLow = EqLowSlider.Value;
         _settings.EqMid = EqMidSlider.Value;
         _settings.EqHigh = EqHighSlider.Value;
+        // Save server selection
+        var servers = new List<string> { "194.31.204.5:9988", "89.169.4.132:9990" };
+        if (ServerCombo.SelectedIndex >= 0 && ServerCombo.SelectedIndex < servers.Count)
+            _settings.Server = servers[ServerCombo.SelectedIndex];
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;
@@ -345,5 +361,29 @@ public sealed partial class SettingsView : UserControl
     {
         StopTest();
         CloseRequested?.Invoke();
+    }
+
+    private void ServerCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateServerInfo();
+    }
+
+    private void UpdateServerInfo()
+    {
+        var servers = new List<(string Label, string Address, string Ping)>
+        {
+            ("🇳🇱 NL", "194.31.204.5:9988", "50ms"),
+            ("🇷🇺 RU", "89.169.4.132:9990", "20-40ms"),
+        };
+        var idx = ServerCombo.SelectedIndex;
+        if (idx >= 0 && idx < servers.Count)
+        {
+            ServerInfo.Text = $"Адрес: {servers[idx].Address} • Пинг: ~{servers[idx].Ping}";
+            ServerInfo.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 94, 100, 126));
+        }
+        else
+        {
+            ServerInfo.Text = "";
+        }
     }
 }
