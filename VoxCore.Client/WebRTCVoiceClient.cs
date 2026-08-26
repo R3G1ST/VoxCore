@@ -70,6 +70,15 @@ public sealed class WebRTCVoiceClient : IDisposable
     private readonly ConcurrentDictionary<uint, string> _ssrcNames = new();     // ssrc -> ник
     private readonly ConcurrentDictionary<string, float> _userVolumes = new();  // ник -> 0..2
 
+    // --- Reusable buffers (zero-alloc hot path) ---
+    private readonly float[] _captureFrame = new float[FrameSize];
+    private readonly float[] _vadFrame = new float[FrameSize];
+    private readonly float[] _apmBuf1 = new float[480];
+    private readonly float[] _apmBuf2 = new float[480];
+    private readonly float[] _denoiseBuf = new float[FrameSize];
+    private readonly byte[] _opusBuf = new byte[4000];
+    private readonly short[] _opusFrameShorts = new short[FrameSize];
+
     private Thread? _mixerThread;
     private CancellationTokenSource _pingCts = new();
     private int _lastPingMs = -1;
@@ -501,7 +510,7 @@ public sealed class WebRTCVoiceClient : IDisposable
 
         _running = true;
         _cts = new CancellationTokenSource();
-        _mixerThread = new Thread(() => MixerLoop(_cts.Token))
+        _mixerThread = new Thread(() => MixerLoop(_cts.Token), 4 * 1024 * 1024)
         {
             IsBackground = true,
             Priority = ThreadPriority.AboveNormal
@@ -603,6 +612,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         var frame = new short[FrameSize];
         var outBytes = new byte[FrameSize * 2];
         var lastTalk = new Dictionary<uint, DateTime>();
+        var speakerBuf = new float[FrameSize];
 
         while (!token.IsCancellationRequested)
         {
@@ -620,10 +630,9 @@ public sealed class WebRTCVoiceClient : IDisposable
                     {
                         string name = SpeakerName(kv.Key);
                         float vol = _userVolumes.TryGetValue(name, out var v) ? v : 1f;
-                        Span<float> f = stackalloc float[FrameSize];
-                        for (int i = 0; i < FrameSize; i++) f[i] = frame[i] / 32768f * vol;
-                        _masterEq.Process(f);
-                        for (int i = 0; i < FrameSize; i++) mix[i] += f[i];
+                        for (int i = 0; i < FrameSize; i++) speakerBuf[i] = frame[i] / 32768f * vol;
+                        _masterEq.Process(speakerBuf);
+                        for (int i = 0; i < FrameSize; i++) mix[i] += speakerBuf[i];
                         lastTalk[kv.Key] = now;
                         SpeakerStarted?.Invoke(SpeakerName(kv.Key));
                     }
@@ -683,19 +692,19 @@ public sealed class WebRTCVoiceClient : IDisposable
             int sampleCount = Math.Min(e.BytesRecorded / 2, FrameSize);
             if (sampleCount < FrameSize) return;
 
-            var frame = new float[FrameSize];
+            var frame = _captureFrame;
             for (int i = 0; i < FrameSize; i++)
                 frame[i] = (short)(e.Buffer[i * 2] | (e.Buffer[i * 2 + 1] << 8)) / 32768f;
 
-            // 1) HPF 80Hz (гул/DC)
+            // 1) HPF 80Hz
             _hpf.Process(frame);
 
             // 2) MicGain
             if (MicGain != 1.0)
                 for (int i = 0; i < FrameSize; i++) frame[i] *= (float)MicGain;
 
-            // 3) VAD on normalized copy — Silero VAD expects [-1,1]
-            var vadFrame = new float[FrameSize];
+            // 3) VAD on normalized copy
+            var vadFrame = _vadFrame;
             frame.AsSpan().CopyTo(vadFrame);
             float peak = 0f;
             for (int i = 0; i < FrameSize; i++)
@@ -707,12 +716,12 @@ public sealed class WebRTCVoiceClient : IDisposable
             for (int i = 0; i < FrameSize; i++)
                 vadFrame[i] = Math.Clamp(vadFrame[i], -1f, 1f);
 
-            // 4) VAD on PRE-DENOISED audio (BEFORE DFN3 — noise suppressor must not kill speech for VAD)
+            // 4) VAD
             bool vadActiveRaw;
             try { vadActiveRaw = _vad?.Process(vadFrame) ?? true; } catch { vadActiveRaw = true; }
             bool vadActive = vadActiveRaw && !MicMuted;
 
-            // 5) Fire self-speaking events (for graph view + member list)
+            // 5) Self-speaking events
             bool talking = vadActive;
             if (talking != _lastSelfTalking)
             {
@@ -727,7 +736,7 @@ public sealed class WebRTCVoiceClient : IDisposable
                 else Log("Self-speaking: SelfName is empty!");
             }
 
-            // 6) AEC3 (APM) — adaptive delay, 10ms chunks via dedicated thread
+            // 6) AEC3 — no heap allocs
             if (_apm != null)
             {
                 long rt = Volatile.Read(ref _lastRenderTicks);
@@ -741,9 +750,8 @@ public sealed class WebRTCVoiceClient : IDisposable
                         try { lock (_apmLock) _apm.SetDelay(d); } catch { }
                     }
                 }
-                var c1 = new float[480]; var c2 = new float[480];
-                frame.AsSpan(0, 480).CopyTo(c1); frame.AsSpan(480, 480).CopyTo(c2);
-                _apmCaptureQ.Enqueue(c1); _apmCaptureQ.Enqueue(c2);
+                frame.AsSpan(0, 480).CopyTo(_apmBuf1); frame.AsSpan(480, 480).CopyTo(_apmBuf2);
+                _apmCaptureQ.Enqueue(_apmBuf1); _apmCaptureQ.Enqueue(_apmBuf2);
                 int waited = 0;
                 while (_apmOutQ.Count < 2 && waited < 50) { Thread.Sleep(1); waited++; }
                 if (_apmOutQ.TryDequeue(out var o1) && _apmOutQ.TryDequeue(out var o2))
@@ -752,27 +760,25 @@ public sealed class WebRTCVoiceClient : IDisposable
                 }
             }
 
-            // 7) DeepFilterNet3 (AFTER VAD — noise suppression for transmitted audio only)
+            // 7) DeepFilterNet3
             if (NoiseSuppression && _deepFilter != null && _deepFilter.IsLoaded)
             {
-                var denoised = new float[FrameSize];
-                _deepFilter.Process(frame, denoised, FrameSize);
-                frame = denoised;
+                _deepFilter.Process(frame, _denoiseBuf, FrameSize);
+                _denoiseBuf.AsSpan().CopyTo(frame);
             }
 
             // 8) AGC2 + limiter
             if (AgcEnabled) _agc2.Process(frame);
 
-            // 9) Gate -40dB с оверрайдом от VAD
+            // 9) Gate -40dB
             if (vadActiveRaw) _gate.ForceOpen();
             _gate.Process(frame);
 
-            // 10) Если VAD молчит — буферизуем pre-roll, не отправляем
-            // BYPASS: отправляем если микрофон не замьючен И есть звук (энергия > порога)
+            // 10) Bypass: send if mic not muted AND has audio
             float energy = 0f;
             for (int i = 0; i < FrameSize; i++) energy += frame[i] * frame[i];
             energy = MathF.Sqrt(energy / FrameSize);
-            bool hasAudio = energy > 0.005f; // ~-46dB порог
+            bool hasAudio = energy > 0.005f;
             bool shouldSend = !MicMuted && hasAudio;
             if (!shouldSend)
             {
@@ -786,7 +792,7 @@ public sealed class WebRTCVoiceClient : IDisposable
                 return;
             }
 
-            // 11) Начало речи: сбрасываем pre-roll (200ms обработанного аудио)
+            // 11) Flush pre-roll
             float[]?[] flush = null;
             if (_wasSilent)
             {
@@ -798,11 +804,10 @@ public sealed class WebRTCVoiceClient : IDisposable
             }
             _wasSilent = false;
 
-            var opusBuf = new byte[4000];
             if (flush != null)
                 foreach (var pf in flush)
-                    EncodeSend(pf, opusBuf);
-            EncodeSend(frame, opusBuf);
+                    EncodeSend(pf, _opusBuf);
+            EncodeSend(frame, _opusBuf);
         }
         catch { }
     }
@@ -810,7 +815,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     private void EncodeSend(float[] frameFloat, byte[] opusBuf)
     {
         if (_pc == null) return;
-        var frameShorts = new short[FrameSize];
+        var frameShorts = _opusFrameShorts;
         for (int i = 0; i < FrameSize; i++)
             frameShorts[i] = (short)Math.Clamp((int)(frameFloat[i] * 32768f), short.MinValue, short.MaxValue);
 
