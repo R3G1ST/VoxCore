@@ -299,11 +299,77 @@ public sealed class WebRTCVoiceClient : IDisposable
     public double GetUserVolume(string nick) =>
         _userVolumes.TryGetValue(nick, out var v) ? v : 1.0;
 
+    // --- UPnP / Windows Firewall auto-port-open ---
+    private int _mappedExternalPort;
+    private bool _firewallRuleAdded;
+
+    private async Task<int> TryOpenPortsAsync()
+    {
+        // 1. Порт для WebRTC UDP (20000-20100 диапазон)
+        var localPort = 20000 + (Environment.MachineName.GetHashCode() & 0x3FFF);
+        _mappedExternalPort = localPort;
+
+        // 2. Windows Firewall — разрешаем входящие UDP
+        try
+        {
+            var ruleName = "VoxCore-UDP-" + localPort;
+            var psi = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall add rule name=\"{ruleName}\" dir=in action=allow protocol=udp localport={localPort}")
+            {
+                CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            var proc = System.Diagnostics.Process.Start(psi);
+            if (proc != null) { await proc.WaitForExitAsync(); _firewallRuleAdded = true; Log($"Firewall: rule added for UDP {localPort}"); }
+        }
+        catch (Exception ex) { Log($"Firewall: failed - {ex.Message}"); }
+
+        // 3. UPnP — открываем порт на роутере
+        try
+        {
+            var discoverer = new Open.Nat.NatDiscoverer();
+            var device = await discoverer.DiscoverDeviceAsync();
+            var mapping = new Open.Nat.Mapping(Open.Nat.Protocol.Udp, localPort, localPort, "VoxCore-Voice");
+            await device.CreatePortMapAsync(mapping);
+            Log($"UPnP: mapped port {localPort} on {device}");
+            _mappedExternalPort = localPort;
+        }
+        catch (Exception ex) { Log($"UPnP: failed ({ex.Message}), will use TURN relay"); }
+
+        return localPort;
+    }
+
+    private async Task CleanupPortsAsync()
+    {
+        try
+        {
+            if (_firewallRuleAdded)
+            {
+                var ruleName = "VoxCore-UDP-" + _mappedExternalPort;
+                var psi = new System.Diagnostics.ProcessStartInfo("netsh", $"advfirewall firewall delete rule name=\"{ruleName}\"")
+                { CreateNoWindow = true, UseShellExecute = false };
+                var proc = System.Diagnostics.Process.Start(psi);
+                if (proc != null) await proc.WaitForExitAsync();
+            }
+        }
+        catch { }
+        try
+        {
+            var discoverer = new Open.Nat.NatDiscoverer();
+            var device = await discoverer.DiscoverDeviceAsync();
+            var mappings = await device.GetAllMappingsAsync();
+            foreach (var m in mappings)
+                if (m.Description == "VoxCore-Voice") await device.DeletePortMapAsync(m);
+        }
+        catch { }
+    }
+
     public async Task ConnectAsync(int channelId)
     {
         _channelId = channelId;
         Log($"ConnectAsync channel={channelId}");
-        StatusChanged?.Invoke("подключение к WebRTC...");
+        StatusChanged?.Invoke("открываю порты...");
+
+        var openPort = await TryOpenPortsAsync();
+        StatusChanged?.Invoke($"порт {openPort}, подключение к WebRTC...");
 
         var (peers, names, roomId) = await _api.WebRTCJoinAsync(channelId);
         _roomId = roomId;
@@ -762,6 +828,7 @@ public sealed class WebRTCVoiceClient : IDisposable
             _ = _api.WebRTCLeaveAsync(_roomId);
             _roomId = "";
         }
+        _ = CleanupPortsAsync();
         StatusChanged?.Invoke("отключено");
     }
 

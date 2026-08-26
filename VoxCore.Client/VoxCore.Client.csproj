@@ -22,13 +22,14 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Concentus" Version="2.2.2" />
+    <PackageReference Include="Open.NAT" Version="2.1.0" />
     <PackageReference Include="RNNoise.NET" Version="1.0.0" />
     <None Include="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="SIPSorcery" Version="10.0.16" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
-    <!-- WinAppSDK 2.4 тянет Windows.AI.MachineLearning, который подсовывает свою
-         Microsoft.ML.OnnxRuntime.dll (v0.0.0.0) и ломает SileroVad ("нет модели").
-         Исключаем только managed-сборку WAIM; нативный onnxruntime остаётся (forward-compatible). -->
+    <!-- WinAppSDK 2.4 пїЅпїЅпїЅпїЅпїЅ Windows.AI.MachineLearning, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+         Microsoft.ML.OnnxRuntime.dll (v0.0.0.0) пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ SileroVad ("пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ").
+         пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ managed-пїЅпїЅпїЅпїЅпїЅпїЅ WAIM; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ onnxruntime пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (forward-compatible). -->
     <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.1.74">
       <ExcludeAssets>lib</ExcludeAssets>
     </PackageReference>
