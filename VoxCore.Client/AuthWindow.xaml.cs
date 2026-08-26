@@ -19,7 +19,8 @@ public sealed partial class AuthWindow : Window
         AppWindow.Title = "VoxCore — вход";
         SetupDarkTitleBar();
         var host = settings.Server.Split(':')[0];
-        _api = new ApiClient(host, 9988);
+        var port = settings.Server.Contains(':') && int.TryParse(settings.Server.Split(':')[1], out var p) ? p : 9988;
+        _api = new ApiClient(host, port);
         NameBox.Text = settings.UserName;
     }
 

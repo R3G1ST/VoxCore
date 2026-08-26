@@ -19,10 +19,11 @@ public partial class App : Application
         {
             var settings = AppSettings.Load();
             var host = settings.Server.Split(':')[0];
+            var port = settings.Server.Contains(':') && int.TryParse(settings.Server.Split(':')[1], out var p) ? p : 9988;
 
             if (settings.Token is string token && settings.UserName.Length > 0)
             {
-                var api = new ApiClient(host, 9988);
+                var api = new ApiClient(host, port);
                 api.RestoreToken(token);
                 var user = new UserInfo { Id = settings.UserId, Name = settings.UserName, Color = settings.UserColor };
                 _window = new MainWindow(api, settings, user);
