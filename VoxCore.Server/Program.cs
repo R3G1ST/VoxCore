@@ -452,8 +452,13 @@ static async Task HandleVoiceAsync(UdpClient udp, ConcurrentDictionary<string, C
                     await udp.SendAsync(data, data.Length, member.Key);
             break;
 
-        case 0x04: // heartbeat
+        case 0x04: // heartbeat -> pong
             if (room.TryGetValue(from, out var m)) m.LastSeen = DateTime.UtcNow;
+            var pong = new byte[2 + roomName.Length];
+            pong[0] = 0x07;
+            pong[1] = (byte)roomName.Length;
+            Encoding.UTF8.GetBytes(roomName, 0, roomName.Length, pong, 2);
+            try { await udp.SendAsync(pong, pong.Length, from); } catch { }
             break;
     }
 }

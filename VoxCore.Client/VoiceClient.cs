@@ -353,6 +353,11 @@ public void Disconnect()
                         Log($"ReceiveLoop: members {names.Count} [{string.Join(",", names)}]");
                         MembersChanged?.Invoke(names);
                         break;
+
+                    case 0x07: // pong
+                        if (_heartbeatSent != default)
+                            LastPingMs = (int)(DateTime.UtcNow - _heartbeatSent).TotalMilliseconds;
+                        break;
                 }
             }
             catch
@@ -406,17 +411,17 @@ public void Disconnect()
         {
             if (_udp is not null && _room.Length <= 255)
             {
-                var sw = System.Diagnostics.Stopwatch.StartNew();
+                _heartbeatSent = DateTime.UtcNow;
                 var packet = new byte[2 + _room.Length];
                 packet[0] = 0x04;
                 packet[1] = (byte)_room.Length;
                 Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
                 try { _udp.Send(packet, packet.Length); } catch { }
-                LastPingMs = (int)sw.ElapsedMilliseconds;
             }
             Thread.Sleep(3000);
         }
     }
+    private DateTime _heartbeatSent;
 
     private void SendJoin()
     {
