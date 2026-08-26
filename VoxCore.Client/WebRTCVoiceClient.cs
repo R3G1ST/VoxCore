@@ -48,6 +48,9 @@ public sealed class WebRTCVoiceClient : IDisposable
     private readonly Equalizer3Band _masterEq = new();
     private readonly Queue<float[]> _preroll = new();
     private bool _wasSilent = true;
+    private bool _lastSelfTalking;
+    private float _preVadGain = 3.0f;
+    private double _vadThreshold = 0.1;
     private ApmProcessor? _apm;
     private readonly object _apmLock = new();
     private long _lastRenderTicks;
@@ -121,6 +124,8 @@ public sealed class WebRTCVoiceClient : IDisposable
     public event Action<string>? SpeakerStarted;
     public event Action<string>? SpeakerStopped;
     public event Action<IReadOnlyList<string>>? MembersChanged;
+    public event Action<bool>? TalkingChanged;
+    public string SelfName { get; private set; } = "";
 
     internal static void Log(string msg)
     {
@@ -221,6 +226,8 @@ public sealed class WebRTCVoiceClient : IDisposable
         _masterEq.LowDb = settings.EqLow;
         _masterEq.MidDb = settings.EqMid;
         _masterEq.HighDb = settings.EqHigh;
+        _preVadGain = settings.PreVadGain;
+        _vadThreshold = settings.VadThreshold;
         foreach (var kv in settings.UserVolumes)
             _userVolumes[kv.Key] = (float)Math.Clamp(kv.Value, 0.0, 2.0);
 
@@ -305,7 +312,10 @@ public sealed class WebRTCVoiceClient : IDisposable
         for (int i = 0; i < peers.Count && i + 1 < names.Count; i++)
             _ssrcNames[(uint)peers[i]] = names[i + 1];
         if (names.Count > 0)
+        {
+            SelfName = names[0];
             MembersChanged?.Invoke(names);
+        }
 
         var config = new RTCConfiguration
         {
@@ -566,7 +576,8 @@ public sealed class WebRTCVoiceClient : IDisposable
     }
 
     /// <summary>
-    /// Захват 20ms: HPF -> MicGain -> DFN3 -> Gate -> AGC2 -> VAD(+pre-roll) -> Opus -> send.
+    /// Захват 20ms: HPF -> MicGain -> PreVadGain -> VAD -> AEC3 -> DFN3 -> AGC2 -> Gate -> Opus -> send.
+    /// VAD runs BEFORE DFN3 so noise suppression doesn't kill speech for voice activity detection.
     /// </summary>
     private void OnCaptureDataAvailable(object? sender, WaveInEventArgs e)
     {
@@ -588,7 +599,29 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (MicGain != 1.0)
                 for (int i = 0; i < FrameSize; i++) frame[i] *= (float)MicGain;
 
-            // 2b) AEC3 (APM) — adaptive delay, 10ms chunks via dedicated thread
+            // 3) Pre-VAD gain boost (before VAD — helps quiet mics)
+            if (_preVadGain != 1.0f)
+                for (int i = 0; i < FrameSize; i++) frame[i] *= _preVadGain;
+
+            // 4) VAD on PRE-DENOISED audio (BEFORE DFN3 — noise suppressor must not kill speech for VAD)
+            bool vadActiveRaw;
+            try { vadActiveRaw = _vad?.Process(frame) ?? true; } catch { vadActiveRaw = true; }
+            bool vadActive = vadActiveRaw && !MicMuted;
+
+            // 5) Fire self-speaking events (for graph view + member list)
+            bool talking = vadActive;
+            if (talking != _lastSelfTalking)
+            {
+                _lastSelfTalking = talking;
+                TalkingChanged?.Invoke(talking);
+                if (!string.IsNullOrEmpty(SelfName))
+                {
+                    if (talking) SpeakerStarted?.Invoke(SelfName);
+                    else SpeakerStopped?.Invoke(SelfName);
+                }
+            }
+
+            // 6) AEC3 (APM) — adaptive delay, 10ms chunks via dedicated thread
             if (_apm != null)
             {
                 long rt = Volatile.Read(ref _lastRenderTicks);
@@ -613,7 +646,7 @@ public sealed class WebRTCVoiceClient : IDisposable
                 }
             }
 
-            // 3) DeepFilterNet3
+            // 7) DeepFilterNet3 (AFTER VAD — noise suppression for transmitted audio only)
             if (NoiseSuppression && _deepFilter != null && _deepFilter.IsLoaded)
             {
                 var denoised = new float[FrameSize];
@@ -621,18 +654,14 @@ public sealed class WebRTCVoiceClient : IDisposable
                 frame = denoised;
             }
 
-            // 4) AGC2 + limiter (до Gate, чтобы поднять тихий голос перед гейтом)
+            // 8) AGC2 + limiter
             if (AgcEnabled) _agc2.Process(frame);
 
-            // 5) VAD (до Gate, чтобы Gate мог ориентироваться на речь)
-            bool vadActiveRaw;
-            try { vadActiveRaw = _vad?.Process(frame) ?? true; } catch { vadActiveRaw = true; }
-            bool vadActive = vadActiveRaw && !MicMuted;
-
-            // 6) Gate -40dB с оверрайдом от VAD (если VAD говорит речь — форсируем открыто)
+            // 9) Gate -40dB с оверрайдом от VAD
             if (vadActiveRaw) _gate.ForceOpen();
             _gate.Process(frame);
-            // Если VAD молчит — не отправляем (даже если Gate открыт из-за громкого шума)
+
+            // 10) Если VAD молчит — буферизуем pre-roll, не отправляем
             if (!vadActive)
             {
                 lock (_preroll)
@@ -645,7 +674,7 @@ public sealed class WebRTCVoiceClient : IDisposable
                 return;
             }
 
-            // 7) Начало речи: сбрасываем pre-roll (200ms обработанного аудио)
+            // 11) Начало речи: сбрасываем pre-roll (200ms обработанного аудио)
             float[]?[] flush = null;
             if (_wasSilent)
             {

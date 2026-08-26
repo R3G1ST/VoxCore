@@ -22,8 +22,8 @@ public sealed class VoiceDspPipeline : IDisposable
     private SileroVad? _vad;
     private NoiseGate? _gate;
 
-    private double _vadThreshold = 0.3; // ниже = чувствительнее
-    private float _preVadGain = 1.0f;   // буст перед VAD
+    private double _vadThreshold = 0.1; // ниже = чувствительнее
+    private float _preVadGain = 3.0f;   // буст перед VAD
 
     public bool IsDfnLoaded => _dfn?.IsLoaded ?? false;
     public bool IsVadLoaded => _vad != null;
@@ -128,7 +128,24 @@ public sealed class VoiceDspPipeline : IDisposable
         // 1) HPF
         _hpf?.Process(frame);
 
-        // 2) DeepFilterNet3
+        // 2) Pre-VAD gain boost (before VAD — helps quiet mics)
+        if (_preVadGain != 1.0f)
+        {
+            for (int i = 0; i < _frameSize; i++)
+                frame[i] *= _preVadGain;
+        }
+
+        // 3) VAD on PRE-DENOISED audio (before DFN3 — noise suppressor must not kill speech for VAD)
+        bool vadActiveRaw = false;
+        try
+        {
+            var _ = _vad?.Process(frame) ?? true;
+            var prob = _vad?.LastProb ?? 1.0;
+            vadActiveRaw = prob >= _vadThreshold;
+        }
+        catch { vadActiveRaw = true; }
+
+        // 4) DeepFilterNet3 (after VAD)
         if (_dfn != null && _dfn.IsLoaded)
         {
             var denoised = new float[_frameSize];
@@ -136,34 +153,13 @@ public sealed class VoiceDspPipeline : IDisposable
             denoised.CopyTo(frame);
         }
 
-        // 3) AGC2
+        // 5) AGC2
         _agc?.Process(frame);
 
-        // 4) Pre-VAD gain boost (помогает тихим микрофонам)
-        if (_preVadGain != 1.0f)
-        {
-            for (int i = 0; i < _frameSize; i++)
-                frame[i] *= _preVadGain;
-        }
-
-        // 5) VAD
-        bool vadActiveRaw = false;
-        try 
-        { 
-            var _ = _vad?.Process(frame) ?? true;
-            var prob = _vad?.LastProb ?? 1.0;
-            vadActiveRaw = prob >= _vadThreshold;
-        } 
-        catch { vadActiveRaw = true; }
-
-        // 6) Gate с VAD-оверрайдом
+        // 6) Gate with VAD override
         if (vadActiveRaw) _gate?.ForceOpen();
         _gate?.Process(frame);
 
-        if (VadStateChanged != null)
-        {
-            // Fire event on state change
-        }
         return vadActiveRaw;
     }
 

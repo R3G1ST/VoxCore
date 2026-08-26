@@ -552,7 +552,7 @@ Task<string> WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDict
     room[user.Id] = pc;
 
     var audioTrack = new MediaStreamTrack(
-        new AudioFormat(AudioCodecsEnum.OPUS, 111, 48000, 2, "minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=256000"));
+        new AudioFormat(AudioCodecsEnum.OPUS, 111, 48000, 1, "minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=256000"));
     pc.addTrack(audioTrack);
 
     var offer = new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp };

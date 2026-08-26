@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private int _lastChannelMsgId;
     private int _lastDmMsgId;
     private bool _useWebRtc = true;
+    private string _lastWebRtcError = "";
 
     public MainWindow(ApiClient api, AppSettings settings, UserInfo user)
     {
@@ -92,6 +93,10 @@ public sealed partial class MainWindow : Window
         _voice.StatusChanged += OnStatusChanged;
         _voice.SpeakerStarted += OnSpeakerStarted;
         _voice.SpeakerStopped += OnSpeakerStopped;
+        if (_webrtc != null)
+        {
+            _webrtc.TalkingChanged += OnTalkingChanged;
+        }
 
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _refreshTimer.Tick += async (_, _) =>
@@ -348,41 +353,32 @@ public sealed partial class MainWindow : Window
                     string reason = connectTask.IsFaulted
                         ? $"ошибка: {connectTask.Exception?.GetBaseException().Message}"
                         : "таймаут ICE (30с)";
-                    StatusText.Text = $"WebRTC fallback → UDP: {reason}";
+                    _lastWebRtcError = reason;
+                    StatusText.Text = $"WebRTC: {reason}";
                     WebRTCVoiceClient.Log($"WebRTC fallback: {reason}");
-                    UpdateConnectingOverlay($"WebRTC: {reason} → UDP");
+                    UpdateConnectingOverlay($"WebRTC: {reason}");
                     _webrtc.Disconnect();
                 }
             }
             catch (Exception ex)
             {
-                StatusText.Text = $"WebRTC failed: {ex.Message}, fallback to UDP";
-                WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}, fallback to UDP");
+                _lastWebRtcError = ex.Message;
+                StatusText.Text = $"WebRTC failed: {ex.Message}";
+                WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}");
                 UpdateConnectingOverlay($"ошибка WebRTC: {ex.Message}");
                 _webrtc.Disconnect();
             }
         }
 
-        // Fallback to UDP if WebRTC didn't connect
+        // WebRTC only — no UDP fallback
         if (!connected)
         {
-            try
-            {
-                var host = _settings.Server.Split(':')[0];
-                UpdateConnectingOverlay("подключение по UDP...");
-                _voice.Connect(host, 9987, ch.Id.ToString(), _user.Name, password, _settings);
-                connected = true;
-                UpdateConnectingOverlay("UDP подключен");
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = $"UDP failed: {ex.Message}";
-                UpdateConnectingOverlay($"UDP failed: {ex.Message}");
-                if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
-                HideConnectingOverlay();
-                await ShowErrorAsync("не удалось подключиться к голосовому каналу");
-                return;
-            }
+            string reason = "";
+            if (_lastWebRtcError.Length > 0) reason = $": {_lastWebRtcError}";
+            if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
+            HideConnectingOverlay();
+            await ShowErrorAsync($"не удалось подключиться к голосовому каналу (WebRTC{reason})");
+            return;
         }
 
         if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
@@ -390,13 +386,13 @@ public sealed partial class MainWindow : Window
 
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
-        ChannelStatusText.Text = connected ? (connected && _webrtc?.IsConnected == true ? "WebRTC подключен" : "UDP подключен") : "не подключен";
+        ChannelStatusText.Text = connected ? "WebRTC подключен" : "не подключен";
         LeaveChannelBtn.Visibility = Visibility.Visible;
         VoiceChannelName.Text = ch.Name;
         VoiceServerName.Text = "VoxCore";
         VoiceConnectedPanel.Visibility = Visibility.Visible;
         VoiceStatusPanel.Visibility = Visibility.Collapsed;
-        StatusText.Text = connected ? $"{(_webrtc?.IsConnected == true ? "WebRTC" : "UDP")}: {ch.Name}" : "ошибка";
+        StatusText.Text = connected ? $"WebRTC: {ch.Name}" : "ошибка";
         ChannelChatPanel.Visibility = Visibility.Visible;
         _lastChannelMsgId = 0;
         _channelMessages.Clear();
