@@ -118,7 +118,16 @@ public void Connect(string server, int port, string room, string name, string pa
             BufferMilliseconds = 20
         };
         _capture.DataAvailable += OnCaptureData;
-        _capture.StartRecording();
+        Log($"VoiceClient: capture device={InputDevice}, gain={MicGain}, ns={NoiseSuppression}");
+        try
+        {
+            _capture.StartRecording();
+            Log("VoiceClient: capture started");
+        }
+        catch (Exception ex)
+        {
+            Log($"VoiceClient: capture FAILED: {ex.Message}");
+        }
 
         _running = true;
         var oldCts = _cts;
@@ -158,9 +167,12 @@ public void Disconnect()
 
     private void OnCaptureData(object? sender, WaveInEventArgs e)
     {
+        if (e.BytesRecorded == 0) return;
         var data = new byte[e.BytesRecorded];
         Array.Copy(e.Buffer, data, e.BytesRecorded);
         _pcmQueue.Enqueue(data);
+        if (_pcmQueue.Count > 10)
+            Log($"VoiceClient: pcmQueue overflow {_pcmQueue.Count}");
     }
 
     private void EncodeLoop(CancellationToken token)
@@ -281,6 +293,7 @@ public void Disconnect()
         var pcmBuf = new short[FrameSize];
         var outBytes = new byte[FrameBytes];
         var recvBuf = new byte[8192];
+        var recvCount = 0;
         while (!token.IsCancellationRequested)
         {
             try
@@ -289,6 +302,8 @@ public void Disconnect()
                 int received = _udp.Client.Receive(recvBuf);
                 if (received < 2) continue;
                 var data = recvBuf.AsSpan(0, received).ToArray();
+                recvCount++;
+                if (recvCount % 50 == 1) Log($"VoiceClient: recv packet #{recvCount} type=0x{data[0]:X2} len={received}");
 
                 switch (data[0])
                 {

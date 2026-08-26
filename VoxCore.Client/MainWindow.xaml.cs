@@ -136,6 +136,10 @@ public sealed partial class MainWindow : Window
 
         Closed += OnWindowClosed;
         _voice.OpenMic = true;
+        _voice.InputDevice = _settings.MicDevice;
+        _voice.MicGain = _settings.MicGain / 100.0;
+        _voice.NoiseSuppression = _settings.NoiseSuppression;
+        _voice.Volume = 80;
         _ = RefreshChannelsAsync();
         _ = RefreshFriendsAsync();
     }
@@ -377,6 +381,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 UpdateConnectingOverlay("WebRTC недоступен, подключаю UDP...");
+                await Task.Delay(500); // ensure capture device is released
                 var serverHost = _settings.Server.Split(':')[0];
                 var serverPort = _settings.VoicePort;
                 _voice.Connect(serverHost, serverPort, ch.Id.ToString(), _user.Name, ch.HasPassword ? "" : "", _settings);
