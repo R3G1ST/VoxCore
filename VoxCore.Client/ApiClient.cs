@@ -248,13 +248,19 @@ public sealed class ApiClient
         return (peers, names, roomId);
     }
 
-    public async Task<(List<int> Peers, List<string> Names)> WebRTCSyncAsync(string roomId)
+    public async Task<(List<int> Peers, List<string> Names, List<string> IceCandidates)> WebRTCSyncAsync(string roomId)
     {
         var r = await CallAsync(new { op = "webrtc_sync", token = Token, room = roomId });
         if (!r.Ok) throw new ApiException(r.Err ?? "sync failed");
         var peers = r.Data.GetProperty("peers").EnumerateArray().Select(x => x.GetInt32()).ToList();
         var names = r.Data.GetProperty("names").EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-        return (peers, names);
+        var candidates = new List<string>();
+        if (r.Data.TryGetProperty("iceCandidates", out var iceEl))
+        {
+            foreach (var c in iceEl.EnumerateArray())
+                candidates.Add(c.GetString() ?? "");
+        }
+        return (peers, names, candidates);
     }
 
     public async Task WebRTCLeaveAsync(string roomId)

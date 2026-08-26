@@ -21,6 +21,8 @@ var webrtcRooms = new ConcurrentDictionary<string, ConcurrentDictionary<int, RTC
 var pendingOffers = new ConcurrentDictionary<string, (int UserId, string RoomId, string Sdp)>();
 // Buffered ICE candidates: "roomId:userId" -> list of candidate strings
 var pendingIceCandidates = new ConcurrentDictionary<string, List<string>>();
+// Server ICE candidates to send to client: "roomId:userId" -> queue of candidate strings
+var serverIceCandidates = new ConcurrentDictionary<string, ConcurrentQueue<string>>();
 // RTP cache for NACK: roomId -> seq -> packet
 var rtpCache = new ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>>();
 
@@ -122,11 +124,11 @@ string ProcessApi(string line, Store store, ConcurrentDictionary<string, Concurr
         "get_channel_messages" => user is null ? Error("unauthorized") : GetChannelMessages(req, store, user.Id),
         "webrtc_join" => user is null ? Error("unauthorized") : WebRTCJoin(req, store, user, webrtcRooms),
         "webrtc_leave" => user is null ? Error("unauthorized") : WebRTCLeave(req, store, user.Id, webrtcRooms),
-        "webrtc_offer" => user is null ? Error("unauthorized") : WebRTCOffer(req, store, user, webrtcRooms, pendingIceCandidates).GetAwaiter().GetResult(),
+        "webrtc_offer" => user is null ? Error("unauthorized") : WebRTCOffer(req, store, user, webrtcRooms, pendingIceCandidates, serverIceCandidates).GetAwaiter().GetResult(),
         "webrtc_answer" => user is null ? Error("unauthorized") : WebRTCAnswer(req, store, user.Id, webrtcRooms),
         "webrtc_ice" => user is null ? Error("unauthorized") : WebRTCIce(req, store, user.Id, webrtcRooms, pendingIceCandidates),
         "webrtc_nack" => user is null ? Error("unauthorized") : WebRTCNack(req, user.Id, webrtcRooms, rtpCache),
-        "webrtc_sync" => WebRTCSync(req, store, webrtcRooms),
+        "webrtc_sync" => WebRTCSync(req, store, webrtcRooms, serverIceCandidates),
         "screen_start" => user is null ? Error("unauthorized") : ScreenStart(req, store, user.Id),
         "screen_stop" => user is null ? Error("unauthorized") : ScreenStop(user.Id),
         "screen_frame" => user is null ? Error("unauthorized") : ScreenFrame(req, user.Id, webrtcRooms),
@@ -517,7 +519,7 @@ static string WebRTCJoin(JsonElement req, Store store, User user, ConcurrentDict
         return Ok(new { peers = peerIds, names = allNames, roomId });
     }
 
-    static string WebRTCSync(JsonElement req, Store store, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
+    static string WebRTCSync(JsonElement req, Store store, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, ConcurrentQueue<string>> serverIceCandidates)
     {
         var roomId = GetString(req, "room");
         if (string.IsNullOrEmpty(roomId)) return Error("bad room");
@@ -525,7 +527,18 @@ static string WebRTCJoin(JsonElement req, Store store, User user, ConcurrentDict
             return Ok(new { peers = new List<int>(), names = new List<string>(), roomId });
         var peerIds = room.Keys.ToList();
         var peerNames = peerIds.Select(id => store.FindUserById(id)?.Name ?? $"user{id}").ToList();
-        return Ok(new { peers = peerIds, names = peerNames, roomId });
+
+        // Drain server ICE candidates for this room
+        var candidates = new List<string>();
+        var userId = 0;
+        if (req.TryGetProperty("user_id", out var uidEl) && uidEl.TryGetInt32(out var uid)) userId = uid;
+        var key = $"{roomId}:{userId}";
+        if (serverIceCandidates.TryRemove(key, out var q))
+        {
+            while (q.TryDequeue(out var c)) candidates.Add(c);
+        }
+
+        return Ok(new { peers = peerIds, names = peerNames, roomId, iceCandidates = candidates });
     }
 
 static string WebRTCLeave(JsonElement req, Store store, int userId, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms)
@@ -542,14 +555,14 @@ static string WebRTCLeave(JsonElement req, Store store, int userId, ConcurrentDi
     return Ok(new { });
 }
 
-Task<string> WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIce)
+Task<string> WebRTCOffer(JsonElement req, Store store, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, List<string>> pendingIce, ConcurrentDictionary<string, ConcurrentQueue<string>> serverIceCandidates)
 {
     if (!req.TryGetProperty("sdp", out var sdpEl)) return Task.FromResult(Error("bad sdp"));
     var sdp = sdpEl.GetString() ?? "";
     var roomId = GetString(req, "room") ?? "";
     if (!webrtcRooms.TryGetValue(roomId, out var room)) return Task.FromResult(Error("комната не найдена"));
 
-    var pc = CreatePeerConnection(roomId, user, webrtcRooms, rtpCache);
+    var pc = CreatePeerConnection(roomId, user, webrtcRooms, serverIceCandidates, rtpCache);
     room[user.Id] = pc;
 
     var audioTrack = new MediaStreamTrack(
@@ -637,7 +650,7 @@ string WebRTCNack(JsonElement req, int userId, ConcurrentDictionary<string, Conc
     return Ok(new { });
 }
 
-RTCPeerConnection CreatePeerConnection(string roomId, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
+RTCPeerConnection CreatePeerConnection(string roomId, User user, ConcurrentDictionary<string, ConcurrentDictionary<int, RTCPeerConnection>> webrtcRooms, ConcurrentDictionary<string, ConcurrentQueue<string>> serverIceCandidates, ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>> rtpCache)
 {
     var config = new RTCConfiguration
     {
@@ -696,7 +709,13 @@ RTCPeerConnection CreatePeerConnection(string roomId, User user, ConcurrentDicti
     pc.onicecandidate += (candidate) =>
     {
         if (candidate != null)
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WebRTC ICE candidate userId={user.Name}: {candidate}");
+        {
+            var candStr = candidate.ToString();
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WebRTC ICE candidate userId={user.Name}: {candStr}");
+            var key = $"{roomId}:{user.Id}";
+            var q = serverIceCandidates.GetOrAdd(key, _ => new ConcurrentQueue<string>());
+            q.Enqueue(candStr);
+        }
     };
 
     pc.onicegatheringstatechange += (state) =>

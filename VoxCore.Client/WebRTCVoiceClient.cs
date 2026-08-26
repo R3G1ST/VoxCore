@@ -566,12 +566,26 @@ public sealed class WebRTCVoiceClient : IDisposable
         if (string.IsNullOrEmpty(_roomId)) return;
         try
         {
-            var (peers, names) = await _api.WebRTCSyncAsync(_roomId);
+            var (peers, names, iceCandidates) = await _api.WebRTCSyncAsync(_roomId);
             _ssrcNames.Clear();
             for (int i = 0; i < peers.Count && i < names.Count; i++)
                 _ssrcNames[(uint)peers[i]] = names[i];
-            Log($"Sync: {names.Count} members [{string.Join(",", names)}]");
+            Log($"Sync: {names.Count} members [{string.Join(",", names)}], ice={iceCandidates.Count} candidates");
             MembersChanged?.Invoke(names);
+
+            // Add server ICE candidates to peer connection
+            if (_pc != null && iceCandidates.Count > 0)
+            {
+                foreach (var c in iceCandidates)
+                {
+                    try
+                    {
+                        _pc.addIceCandidate(new RTCIceCandidateInit { candidate = c });
+                        Log($"Added server ICE candidate: {c.Substring(0, Math.Min(80, c.Length))}...");
+                    }
+                    catch (Exception ex) { Log($"Failed to add ICE candidate: {ex.Message}"); }
+                }
+            }
         }
         catch { }
     }
