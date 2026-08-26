@@ -7,11 +7,10 @@ using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
 using VoxCore.Server;
 
-const ushort VoicePort = 9987;
-const ushort ApiPort = 9988;
+var voicePort = args.Length > 0 && ushort.TryParse(args[0], out var vp) ? vp : (ushort)9987;
+var apiPort = args.Length > 1 && ushort.TryParse(args[1], out var ap) ? ap : (ushort)9988;
+var dataDir = args.Length > 2 ? args[2] : Path.Combine(AppContext.BaseDirectory, "data");
 const int TimeoutSeconds = 10;
-
-var dataDir = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "data");
 var store = new Store(dataDir);
 var rooms = new ConcurrentDictionary<string, ConcurrentDictionary<IPEndPoint, Member>>();
 
@@ -26,11 +25,11 @@ var serverIceCandidates = new ConcurrentDictionary<string, ConcurrentQueue<strin
 // RTP cache for NACK: roomId -> seq -> packet
 var rtpCache = new ConcurrentDictionary<string, ConcurrentDictionary<int, (byte[] payload, uint ts, int marker, int pt)>>();
 
-using var voiceUdp = new UdpClient(new IPEndPoint(IPAddress.Any, VoicePort));
-var apiTcp = new TcpListener(IPAddress.Any, ApiPort);
+using var voiceUdp = new UdpClient(new IPEndPoint(IPAddress.Any, voicePort));
+var apiTcp = new TcpListener(IPAddress.Any, apiPort);
 apiTcp.Start();
 
-Console.WriteLine($"VoxCore Server: voice UDP {VoicePort}, API TCP {ApiPort}, data={dataDir}");
+Console.WriteLine($"VoxCore Server: voice UDP {voicePort}, API TCP {apiPort}, data={dataDir}");
 Console.WriteLine("WebRTC signaling enabled.");
 Console.WriteLine("Press Ctrl+C to stop.");
 
