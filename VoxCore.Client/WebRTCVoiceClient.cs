@@ -334,6 +334,18 @@ public sealed class WebRTCVoiceClient : IDisposable
                     urls = "turn:194.31.204.5:3478?transport=tcp",
                     username = "voxcore",
                     credential = "voxcore123"
+                },
+                new RTCIceServer
+                {
+                    urls = "turns:194.31.204.5:5349?transport=tcp",
+                    username = "voxcore",
+                    credential = "voxcore123"
+                },
+                new RTCIceServer
+                {
+                    urls = "turns:194.31.204.5:5349",
+                    username = "voxcore",
+                    credential = "voxcore123"
                 }
             }
         };

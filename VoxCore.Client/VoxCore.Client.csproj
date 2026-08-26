@@ -1,4 +1,4 @@
-ï»¿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -13,7 +13,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.1.6-beta</Version>
+    <Version>1.1.8-beta</Version>
     <Product>VoxCore</Product>
     <AssemblyTitle>VoxCore</AssemblyTitle>
     <Description>VoxCore</Description>
@@ -26,9 +26,9 @@
     <None Include="rnnoise.dll" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="SIPSorcery" Version="10.0.16" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
-    <!-- WinAppSDK 2.4 Ñ‚ÑÐ½ÐµÑ‚ Windows.AI.MachineLearning, ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ð¹ Ð¿Ð¾Ð´ÑÐ¾Ð²Ñ‹Ð²Ð°ÐµÑ‚ ÑÐ²Ð¾ÑŽ
-         Microsoft.ML.OnnxRuntime.dll (v0.0.0.0) Ð¸ Ð»Ð¾Ð¼Ð°ÐµÑ‚ SileroVad ("Ð½ÐµÑ‚ Ð¼Ð¾Ð´ÐµÐ»Ð¸").
-         Ð˜ÑÐºÐ»ÑŽÑ‡Ð°ÐµÐ¼ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ managed-ÑÐ±Ð¾Ñ€ÐºÑƒ WAIM; Ð½Ð°Ñ‚Ð¸Ð²Ð½Ñ‹Ð¹ onnxruntime Ð¾ÑÑ‚Ð°Ñ‘Ñ‚ÑÑ (forward-compatible). -->
+    <!-- WinAppSDK 2.4 òÿíåò Windows.AI.MachineLearning, êîòîðûé ïîäñîâûâàåò ñâîþ
+         Microsoft.ML.OnnxRuntime.dll (v0.0.0.0) è ëîìàåò SileroVad ("íåò ìîäåëè").
+         Èñêëþ÷àåì òîëüêî managed-ñáîðêó WAIM; íàòèâíûé onnxruntime îñòà¸òñÿ (forward-compatible). -->
     <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.1.74">
       <ExcludeAssets>lib</ExcludeAssets>
     </PackageReference>
