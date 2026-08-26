@@ -1,0 +1,56 @@
+<UserControl
+    x:Class="VoxCore.Client.SectorNavigation"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="248" Background="#08080e">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- System name header -->
+        <Border Grid.Row="0" Padding="16,14,16,10" BorderBrush="#181820" BorderThickness="0,0,0,1">
+            <TextBlock x:Name="SystemNameText" Text="ЗВЁЗДНАЯ СИСТЕМА" FontFamily="Cascadia Code"
+                       FontSize="13" FontWeight="Bold" Foreground="#e8e8f0"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <!-- Tabs: СЕКТОРЫ / СОЮЗНИКИ -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Padding="12,8,12,4" Spacing="4">
+            <Button x:Name="SectorsTabBtn" Content="СЕКТОРЫ" Style="{ThemeResource VcSmallButton}"
+                    Background="#0d3a54" Foreground="#7fe3ff" Click="SectorsTabBtn_Click" />
+            <Button x:Name="AlliesTabBtn" Content="СОЮЗНИКИ" Style="{ThemeResource VcSmallButton}"
+                    Background="#08080e" Foreground="#9fefff" Click="AlliesTabBtn_Click" />
+        </StackPanel>
+
+        <!-- Channels list -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ChannelsPanel" Padding="8,4" Spacing="2" />
+        </ScrollViewer>
+
+        <!-- Allies panel (hidden by default) -->
+        <Grid x:Name="AlliesPanel" Grid.Row="2" Background="#08080e" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Padding="12,8" Spacing="6">
+                <TextBlock Text="ПОИСК ПИЛОТОВ" FontFamily="Cascadia Code" FontSize="10"
+                           Foreground="#5a5a6a" />
+                <TextBox x:Name="PilotSearchBox" PlaceholderText="позывной пилота..."
+                         FontFamily="Cascadia Code" FontSize="12" Background="#030306"
+                         Foreground="#e8e8f0" BorderBrush="#181820" BorderThickness="1"
+                         CornerRadius="6" Padding="10,6" KeyDown="PilotSearchBox_KeyDown" />
+                <Button x:Name="PilotSearchBtn" Content="ПОИСК" Style="{ThemeResource VcSmallButton}"
+                        HorizontalAlignment="Stretch" Click="PilotSearchBtn_Click" />
+                <StackPanel x:Name="SearchResults" Spacing="4" Visibility="Collapsed" />
+            </StackPanel>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="AlliesListPanel" Padding="8,0,8,8" Spacing="4" />
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

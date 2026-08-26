@@ -1,0 +1,70 @@
+<UserControl
+    x:Class="VoxCore.Client.PilotProfile"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Height="72" Background="#08080e">
+
+    <Grid Padding="10,8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Avatar -->
+        <Border x:Name="AvatarBorder" Width="36" Height="36" CornerRadius="18" Background="#5865f2">
+            <TextBlock x:Name="AvatarLetter" FontFamily="Cascadia Code" FontWeight="Bold"
+                       Foreground="White" FontSize="16" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- Name + Status -->
+        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock x:Name="UserNameText" FontFamily="Cascadia Code" FontSize="13"
+                       FontWeight="SemiBold" Foreground="White" />
+            <TextBlock x:Name="UserStatusText" Text="на орбите" FontFamily="Cascadia Code"
+                       FontSize="10" Foreground="#3ba55d" />
+        </StackPanel>
+
+        <!-- Mic toggle -->
+        <Grid Grid.Column="2" Margin="2,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ToggleButton x:Name="MicToggle" Content="🎙️" Width="28" Height="28" Padding="0"
+                          FontSize="12" Background="Transparent" BorderThickness="0"
+                          Checked="MicToggle_Checked" Unchecked="MicToggle_Unchecked"
+                          ToolTipService.ToolTip="заглушить" />
+            <Border Grid.Column="1" Width="12" Height="28" Background="Transparent"
+                    CornerRadius="0,4,4,0" VerticalAlignment="Center">
+                <TextBlock Text="▾" FontSize="8" Foreground="#5a5a6a" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+            </Border>
+        </Grid>
+
+        <!-- Speaker toggle -->
+        <Grid Grid.Column="3" Margin="2,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ToggleButton x:Name="SpeakerToggle" Content="🔊" Width="28" Height="28" Padding="0"
+                          FontSize="12" Background="Transparent" BorderThickness="0"
+                          Checked="SpeakerToggle_Checked" Unchecked="SpeakerToggle_Unchecked"
+                          ToolTipService.ToolTip="защитить" />
+            <Border Grid.Column="1" Width="12" Height="28" Background="Transparent"
+                    CornerRadius="0,4,4,0" VerticalAlignment="Center">
+                <TextBlock Text="▾" FontSize="8" Foreground="#5a5a6a" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+            </Border>
+        </Grid>
+
+        <!-- Settings -->
+        <Button x:Name="SettingsBtn" Grid.Column="4" Content="⚙️" Width="28" Height="28" Padding="0"
+                FontSize="12" Margin="2,0,0,0" Background="Transparent" BorderThickness="0"
+                Click="SettingsBtn_Click" ToolTipService.ToolTip="навигационная консоль" />
+    </Grid>
+</UserControl>

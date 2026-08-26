@@ -66,6 +66,10 @@ public sealed partial class MainWindow : Window
         HomeView.JoinRequested += async ch => { await JoinChannelAsync(ch); ShowUi(true); };
         HomeView.Unauthorized += () => DispatcherQueue.TryEnqueue(ShowAuthAndClose);
         HomeView.HubRequested += () => ShowUi(true);
+
+        // New layout components
+        PilotProfile.SetUser(_user.Name, _user.Color);
+        CrewManifest.BindMembers(_members);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1100, 700));
         AppWindow.Title = "VoxCore";
 
@@ -84,11 +88,6 @@ public sealed partial class MainWindow : Window
         tb.ButtonInactiveBackgroundColor = ColorFromArgb(30, 31, 34);
         tb.ButtonInactiveForegroundColor = ColorFromArgb(90, 94, 102);
 
-        AvatarBorder.Background = BrushFromHex(user.Color);
-        AvatarLetter.Text = user.Name.Length > 0 ? user.Name[..1].ToUpperInvariant() : "?";
-        UserNameText.Text = user.Name;
-
-        MembersList.ItemsSource = _members;
         ChannelChatList.ItemsSource = _channelMessages;
         DmChatList.ItemsSource = _dmMessages;
         _voice.MembersChanged += OnMembersChanged;
@@ -172,62 +171,8 @@ public sealed partial class MainWindow : Window
 
     private void RenderChannels()
     {
-        ChannelsPanel.Children.Clear();
-        foreach (var ch in _channels)
-        {
-            var btn = new Button
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(10, 9, 10, 9),
-                CornerRadius = new CornerRadius(6),
-                Background = BrushFromHex(_currentChannel?.Id == ch.Id ? "#0d3a54" : "#00000000"),
-                BorderThickness = new Thickness(0)
-            };
-            var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            panel.Children.Add(new TextBlock
-            {
-                Text = "🔊",
-                FontSize = 14,
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            var nameTb = new TextBlock
-            {
-                Text = ch.Name + (ch.HasPassword ? " 🔒" : ""),
-                Foreground = BrushFromHex("#dbdee1"),
-                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code"),
-                FontSize = 14,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            panel.Children.Add(nameTb);
-            if (ch.Users > 0)
-            {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = ch.Users.ToString(),
-                    Foreground = BrushFromHex("#949ba4"),
-                    FontSize = 12,
-                    VerticalAlignment = VerticalAlignment.Center
-                });
-            }
-            if (ch.OwnerId == _user.Id)
-            {
-                var delBtn = new Button
-                {
-                    Content = "🗑",
-                    Padding = new Thickness(4, 2, 4, 2),
-                    Background = BrushFromHex("#00000000"),
-                    BorderThickness = new Thickness(0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Right
-                };
-                delBtn.Click += async (_, _) => await DeleteChannelAsync(ch);
-                panel.Children.Add(delBtn);
-            }
-            btn.Content = panel;
-            btn.Click += async (_, _) => await JoinChannelAsync(ch);
-            ChannelsPanel.Children.Add(btn);
-        }
+        SectorNav.SetChannels(_channels);
+        ConstellationBar.SetServers(_channels);
     }
 
     private async Task CreateChannelAsync()
@@ -445,18 +390,30 @@ public sealed partial class MainWindow : Window
 
     // ---------- Друзья ----------
 
+    private async Task SearchPilotsAsync(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+        try
+        {
+            var results = await _api.SearchUsersAsync(query);
+            SectorNav.SetAllies(results.Select(FriendItem.FromUser).ToList());
+        }
+        catch
+        {
+            // поиск недоступен
+        }
+    }
+
     private async Task RefreshFriendsAsync()
     {
         try
         {
             var friends = await _api.GetFriendsAsync();
-            FriendsList.ItemsSource = friends.Select(FriendItem.FromUser).ToList();
+            var allyItems = friends.Select(FriendItem.FromUser).ToList();
+            SectorNav.SetAllies(allyItems);
 
             var requests = await _api.GetFriendRequestsAsync();
             var reqItems = requests.Select(FriendItem.FromUser).ToList();
-            RequestsList.ItemsSource = reqItems;
-            RequestsSection.Visibility = reqItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            FriendsTabBtn.Content = reqItems.Count > 0 ? $"СОЮЗНИКИ ({reqItems.Count})" : "СОЮЗНИКИ";
         }
         catch (ApiException ex) when (ex.Message == "unauthorized")
         {
@@ -483,92 +440,21 @@ public sealed partial class MainWindow : Window
 
     private async Task DoSearchAsync()
     {
-        var query = SearchBox.Text.Trim();
-        if (query.Length == 0)
-        {
-            SearchResultsList.Visibility = Visibility.Collapsed;
-            SearchInfo.Text = "";
-            return;
-        }
-        SearchBtn.IsEnabled = false;
-        SearchInfo.Text = "поиск...";
-        try
-        {
-            var users = await _api.SearchUsersAsync(query);
-            if (users.Count == 0)
-            {
-                SearchInfo.Text = "никого не найдено";
-                SearchResultsList.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                SearchInfo.Text = "";
-                SearchResultsList.ItemsSource = users.Select(FriendItem.FromUser).ToList();
-                SearchResultsList.Visibility = Visibility.Visible;
-            }
-        }
-        catch (ApiException ex)
-        {
-            if (ex.Message == "unauthorized")
-            {
-                DispatcherQueue.TryEnqueue(ShowAuthAndClose);
-                return;
-            }
-            SearchInfo.Text = ex.Message;
-        }
-        catch
-        {
-            SearchInfo.Text = "нет связи с сервером";
-        }
-        finally
-        {
-            SearchBtn.IsEnabled = true;
-        }
-    }
-
-    private async void SearchBtn_Click(object sender, RoutedEventArgs e) => await DoSearchAsync();
-
-    private void SearchBox_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key == Windows.System.VirtualKey.Enter)
-            _ = DoSearchAsync();
+        // Search is now handled by SectorNavigation
+        await Task.CompletedTask;
     }
 
     private async void SearchResult_Click(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not FriendItem item) return;
-        switch (item.State)
-        {
-            case "Friend":
-                SearchInfo.Text = $"{item.Name} уже у тебя в друзьях";
-                return;
-            case "Requested":
-                SearchInfo.Text = $"запрос {item.Name} уже отправлен, ждёт принятия";
-                return;
-            case "Incoming":
-                SearchInfo.Text = $"{item.Name} уже отправил тебе запрос — прими его во вкладке Друзья";
-                return;
-        }
-        SearchInfo.Text = "отправляю запрос...";
         try
         {
             await _api.AddFriendAsync(item.Name);
-            SearchInfo.Text = $"запрос отправлен {item.Name}";
-            SearchResultsList.Visibility = Visibility.Collapsed;
             _ = RefreshFriendsAsync();
-        }
-        catch (ApiException ex)
-        {
-            if (ex.Message == "unauthorized")
-            {
-                DispatcherQueue.TryEnqueue(ShowAuthAndClose);
-                return;
-            }
-            SearchInfo.Text = ex.Message;
         }
         catch
         {
-            SearchInfo.Text = "нет связи с сервером";
+            // search handled by SectorNav
         }
     }
 
@@ -616,26 +502,12 @@ public sealed partial class MainWindow : Window
 
     private void ChannelsTabBtn_Click(object sender, RoutedEventArgs e)
     {
-        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#0d3a54");
-        ChannelsTabBtn.Foreground = MainWindow.BrushFromHex("#7fe3ff");
-        FriendsTabBtn.Background = MainWindow.BrushFromHex("#0d0f1e");
-        FriendsTabBtn.Foreground = MainWindow.BrushFromHex("#9fefff");
-        FriendsPanel.Visibility = Visibility.Collapsed;
-        ChannelsHeader.Visibility = Visibility.Visible;
-        ChannelsScroll.Visibility = Visibility.Visible;
-        CloseDmPanel();
+        // Handled by SectorNavigation
     }
 
     private void FriendsTabBtn_Click(object sender, RoutedEventArgs e)
     {
-        FriendsTabBtn.Background = MainWindow.BrushFromHex("#0d3a54");
-        FriendsTabBtn.Foreground = MainWindow.BrushFromHex("#7fe3ff");
-        ChannelsTabBtn.Background = MainWindow.BrushFromHex("#0d0f1e");
-        ChannelsTabBtn.Foreground = MainWindow.BrushFromHex("#9fefff");
-        FriendsPanel.Visibility = Visibility.Visible;
-        ChannelsHeader.Visibility = Visibility.Collapsed;
-        ChannelsScroll.Visibility = Visibility.Collapsed;
-        _ = RefreshFriendsAsync();
+        // Handled by SectorNavigation
     }
 
     // ---------- Голос ----------
@@ -705,28 +577,43 @@ public sealed partial class MainWindow : Window
     {
         _voice.MicMuted = true;
         _webrtc.MicMuted = true;
-        MicMuteBtn.Content = "🎙️🚫";
     }
 
     private void MicMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = false;
         _webrtc.MicMuted = false;
-        MicMuteBtn.Content = "🎙️";
     }
 
     private void HeadMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = true;
         _webrtc.PlaybackMuted = true;
-        HeadMuteBtn.Content = "🔇";
     }
 
     private void HeadMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = false;
         _webrtc.PlaybackMuted = false;
-        HeadMuteBtn.Content = "🔊";
+    }
+
+    // ---------- New layout handlers ----------
+    private void ConstellationBar_SettingsRequested(object sender, EventArgs e) => ShowMode("settings");
+    private void ConstellationBar_AddServerRequested(object sender, EventArgs e) { _ = CreateChannelAsync(); }
+    private void SectorNav_ChannelSelected(object sender, ChannelInfo ch) { _ = JoinChannelAsync(ch); ShowUi(true); }
+    private void SectorNav_AddChannelRequested(object sender, EventArgs e) { _ = CreateChannelAsync(); }
+    private void SectorNav_AlliesTabRequested(object sender, EventArgs e) { _ = RefreshFriendsAsync(); }
+    private void SectorNav_PilotSearched(object sender, string query) { _ = SearchPilotsAsync(query); }
+    private void PilotProfile_SettingsRequested(object sender, EventArgs e) => ShowMode("settings");
+    private void PilotProfile_MicToggled(object sender, bool muted)
+    {
+        _voice.MicMuted = muted;
+        _webrtc.MicMuted = muted;
+    }
+    private void PilotProfile_SpeakerToggled(object sender, bool muted)
+    {
+        _voice.PlaybackMuted = muted;
+        _webrtc.PlaybackMuted = muted;
     }
 
     private ScreenShareService? _activeScreenShare;
@@ -747,7 +634,6 @@ public sealed partial class MainWindow : Window
         HomeView.Visibility = mode == "home" ? Visibility.Visible : Visibility.Collapsed;
         HomeView.SetActive(mode == "home");
         SettingsView.Visibility = mode == "settings" ? Visibility.Visible : Visibility.Collapsed;
-        OldUi.Visibility = Visibility.Collapsed;
         TitleBarArea.Background = BrushFromHex("#070810");
         var tb = AppWindow.TitleBar;
         var bg = ColorFromArgb(7, 8, 16);
@@ -844,21 +730,7 @@ public sealed partial class MainWindow : Window
 
     private void MembersList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not MemberItem member) return;
-        if (!member.IsScreenSharing)
-        {
-            ScreenShareStatusText.Text = $"{member.Name} не демонстрирует экран";
-            return;
-        }
-        if (_memberViewers.TryGetValue(member.Name, out var existing) && existing != null)
-        {
-            existing.Activate();
-            return;
-        }
-        var viewer = new ScreenShareViewerWindow(member.Name);
-        _memberViewers[member.Name] = viewer;
-        viewer.Closed += (_, _) => _memberViewers.Remove(member.Name);
-        viewer.Activate();
+        // MembersList is now in CrewManifest
     }
 
     private async Task PollScreenSharersAsync()
@@ -1043,13 +915,20 @@ public sealed partial class MainWindow : Window
 
     private async void DmChatSend_Click(object sender, RoutedEventArgs e) => await SendDmAsync();
 
-    private void FriendDm_Click(object sender, RoutedEventArgs e)
+    private async void FriendDm_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: int id }) return;
-        var friends = FriendsList.ItemsSource as List<FriendItem>;
-        var friend = friends?.FirstOrDefault(f => f.Id == id);
-        if (friend is null) return;
-        OpenDmPanel(new UserInfo { Id = friend.Id, Name = friend.Name, Color = friend.HexColor });
+        try
+        {
+            var friends = await _api.GetFriendsAsync();
+            var friend = friends.FirstOrDefault(f => f.Id == id);
+            if (friend is not null)
+                OpenDmPanel(friend);
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     private void LogoutBtn_Click(object sender, RoutedEventArgs e)
