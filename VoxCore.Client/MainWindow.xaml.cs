@@ -360,49 +360,44 @@ public sealed partial class MainWindow : Window
                     string errorDetail = connectTask.IsFaulted
                         ? connectTask.Exception?.GetBaseException().Message ?? "unknown"
                         : "таймаут ICE (30с)";
-                    string userAction = "";
-                    if (errorDetail.Contains("AudioIncompatible"))
-                        userAction = "\n\nОбнови друга на v1.1.5-beta — его версия отправляет стерео вместо моно.";
-                    else if (errorDetail.Contains("ICE failed") || errorDetail.Contains("таймаут"))
-                        userAction = "\n\nUDP подключение заблокировано файрволом.\nВключи VoxCore в Windows Defender Firewall (разреши входящие и исходящие).\nИли попроси друга сделать то же самое.";
-                    else if (errorDetail.Contains("unauthorized"))
-                        userAction = "\n\n重新 авторизуйся (перезайди в аккаунт).";
-                    _lastWebRtcError = errorDetail;
-                    StatusText.Text = $"WebRTC: {errorDetail}";
-                    WebRTCVoiceClient.Log($"WebRTC error: {errorDetail}");
-                    UpdateConnectingOverlay($"WebRTC: {errorDetail}");
+                    WebRTCVoiceClient.Log($"WebRTC error: {errorDetail}, falling back to UDP");
                     _webrtc.Disconnect();
-                    HideConnectingOverlay();
-                    await ShowErrorAsync($"WebRTC не подключился:\n{errorDetail}{userAction}\n\nЛог: %TEMP%\\voxcore-client.log");
-                    return;
                 }
             }
             catch (Exception ex)
             {
-                _lastWebRtcError = ex.Message;
-                StatusText.Text = $"WebRTC failed: {ex.Message}";
-                WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}");
-                UpdateConnectingOverlay($"ошибка WebRTC: {ex.Message}");
+                WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}, falling back to UDP");
                 _webrtc.Disconnect();
+            }
+        }
+
+        // Fallback to UDP (VoiceClient with full DSP pipeline)
+        if (!connected && _voice is not null)
+        {
+            try
+            {
+                UpdateConnectingOverlay("WebRTC недоступен, подключаю UDP...");
+                var serverHost = _settings.Server.Split(':')[0];
+                var serverPort = _settings.VoicePort;
+                _voice.Connect(serverHost, serverPort, ch.Id.ToString(), _user.Name, ch.HasPassword ? "" : "", _settings);
+                connected = true;
+                UpdateConnectingOverlay("UDP подключен (DSP активен)");
+                await Task.Delay(500);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"UDP failed: {ex.Message}";
+                UpdateConnectingOverlay($"ошибка: {ex.Message}");
+                await ShowErrorAsync($"Не удалось подключиться:\n{ex.Message}\n\nЛог: %TEMP%\\voxcore-client.log");
                 HideConnectingOverlay();
-                await ShowErrorAsync($"WebRTC ошибка:\n{ex.Message}\n\nЛог: %TEMP%\\voxcore-client.log");
                 return;
             }
         }
 
-        // WebRTC only — no UDP fallback
         if (!connected)
         {
-            if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
             HideConnectingOverlay();
-            string hint = "";
-            if (_lastWebRtcError.Contains("AudioIncompatible"))
-                hint = "\n\n→ Обнови ВСЕХ клиентов на v1.1.5-beta";
-            else if (_lastWebRtcError.Contains("ICE") || _lastWebRtcError.Contains("таймаут"))
-                hint = "\n\n→ TURN 3478 заблокирован фаерволом. Нужно: оба в одной сети или открыть UDP 3478";
-            else if (_lastWebRtcError.Length == 0)
-                hint = "\n\n→ WebRTC не инициализирован. Проверь лог: %TEMP%\\voxcore-client.log";
-            await ShowErrorAsync($"Не удалось подключиться к голосовому каналу\n\nОшибка: {_lastWebRtcError}{hint}\n\nЛог: %TEMP%\\voxcore-client.log");
+            await ShowErrorAsync("Не удалось подключиться к голосовому каналу");
             return;
         }
 
@@ -411,7 +406,7 @@ public sealed partial class MainWindow : Window
 
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
-        ChannelStatusText.Text = connected ? "WebRTC подключен" : "не подключен";
+        ChannelStatusText.Text = connected ? (_useWebRtc && _webrtc?.IsConnected == true ? "WebRTC подключен" : "UDP подключен (DSP)") : "не подключен";
         LeaveChannelBtn.Visibility = Visibility.Visible;
         VoiceChannelName.Text = ch.Name;
         VoiceServerName.Text = "VoxCore";

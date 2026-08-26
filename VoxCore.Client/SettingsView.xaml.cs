@@ -52,15 +52,19 @@ public sealed partial class SettingsView : UserControl
         LoopbackCheck.IsChecked = false;
 
         // Server selection
-        var servers = new List<(string Label, string Address)>
+        var servers = new List<(string Label, string Address, int VoicePort)>
         {
-            ("🇳🇱 NL сервер (Европа)", "194.31.204.5:9988"),
-            ("🇷🇺 RU сервер (Россия)", "89.169.4.132:9990"),
+            ("🇳🇱 NL сервер (Европа)", "194.31.204.5:9988", 9987),
+            ("🇷🇺 RU сервер (Россия)", "89.169.4.132:9990", 9989),
         };
-        foreach (var (label, _) in servers) ServerCombo.Items.Add(label);
+        foreach (var s in servers) ServerCombo.Items.Add(s.Label);
         var currentServer = settings.Server;
         ServerCombo.SelectedIndex = servers.FindIndex(s => s.Address == currentServer);
         if (ServerCombo.SelectedIndex < 0) ServerCombo.SelectedIndex = 0;
+        // Set voice port based on current server
+        var currentIdx = ServerCombo.SelectedIndex;
+        if (currentIdx >= 0 && currentIdx < servers.Count)
+            _settings.VoicePort = servers[currentIdx].VoicePort;
         UpdateServerInfo();
 
         VolumeSlider.Value = 80;
@@ -340,9 +344,12 @@ public sealed partial class SettingsView : UserControl
         _settings.EqMid = EqMidSlider.Value;
         _settings.EqHigh = EqHighSlider.Value;
         // Save server selection
-        var servers = new List<string> { "194.31.204.5:9988", "89.169.4.132:9990" };
+        var servers = new List<(string Address, int VoicePort)> { ("194.31.204.5:9988", 9987), ("89.169.4.132:9990", 9989) };
         if (ServerCombo.SelectedIndex >= 0 && ServerCombo.SelectedIndex < servers.Count)
-            _settings.Server = servers[ServerCombo.SelectedIndex];
+        {
+            _settings.Server = servers[ServerCombo.SelectedIndex].Address;
+            _settings.VoicePort = servers[ServerCombo.SelectedIndex].VoicePort;
+        }
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;
@@ -378,7 +385,7 @@ public sealed partial class SettingsView : UserControl
         var idx = ServerCombo.SelectedIndex;
         if (idx >= 0 && idx < servers.Count)
         {
-            ServerInfo.Text = $"Адрес: {servers[idx].Address} • Пинг: ~{servers[idx].Ping}";
+            ServerInfo.Text = $"API: {servers[idx].Address} • UDP: {(idx == 0 ? "9987" : "9989")} • Пинг: ~{servers[idx].Ping}";
             ServerInfo.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 94, 100, 126));
         }
         else
