@@ -410,25 +410,13 @@ public sealed class WebRTCVoiceClient : IDisposable
                 new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
                 new RTCIceServer
                 {
-                    urls = "turn:194.31.204.5:3478",
+                    urls = $"turn:{_serverHost}:3478",
                     username = "voxcore",
                     credential = "voxcore123"
                 },
                 new RTCIceServer
                 {
-                    urls = "turn:194.31.204.5:3478?transport=tcp",
-                    username = "voxcore",
-                    credential = "voxcore123"
-                },
-                new RTCIceServer
-                {
-                    urls = "turns:194.31.204.5:5349?transport=tcp",
-                    username = "voxcore",
-                    credential = "voxcore123"
-                },
-                new RTCIceServer
-                {
-                    urls = "turns:194.31.204.5:5349",
+                    urls = $"turn:{_serverHost}:3478?transport=tcp",
                     username = "voxcore",
                     credential = "voxcore123"
                 }

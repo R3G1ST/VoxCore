@@ -200,7 +200,7 @@ public sealed partial class SettingsView : UserControl
             IceDot.Fill = Gray();
             IceStatus.Text = "—";
             TurnDot.Fill = Gray();
-            TurnStatus.Text = "194.31.204.5:3478";
+            TurnStatus.Text = $"{_settings?.Server?.Split(':')[0] ?? "?"}:3478";
         }
 
         int ping = _webrtc?.LastPingMs ?? -1;
