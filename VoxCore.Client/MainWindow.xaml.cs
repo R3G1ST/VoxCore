@@ -341,8 +341,8 @@ public sealed partial class MainWindow : Window
         LeaveChannel();
         bool connected = false;
 
-        // Try WebRTC first (with 30s timeout)
-        if (_useWebRtc && _webrtc != null)
+        // Try WebRTC first (with 30s timeout) — skip if ForceUdp
+        if (_useWebRtc && _webrtc != null && !_settings.ForceUdp)
         {
             try
             {

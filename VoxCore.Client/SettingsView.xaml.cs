@@ -65,6 +65,7 @@ public sealed partial class SettingsView : UserControl
         var currentIdx = ServerCombo.SelectedIndex;
         if (currentIdx >= 0 && currentIdx < servers.Count)
             _settings.VoicePort = servers[currentIdx].VoicePort;
+        ForceUdpToggle.IsOn = settings.ForceUdp;
         UpdateServerInfo();
 
         VolumeSlider.Value = 80;
@@ -350,6 +351,7 @@ public sealed partial class SettingsView : UserControl
             _settings.Server = servers[ServerCombo.SelectedIndex].Address;
             _settings.VoicePort = servers[ServerCombo.SelectedIndex].VoicePort;
         }
+        _settings.ForceUdp = ForceUdpToggle.IsOn;
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;

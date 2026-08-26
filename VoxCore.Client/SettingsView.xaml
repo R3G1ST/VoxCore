@@ -357,6 +357,10 @@
                                   SelectionChanged="ServerCombo_SelectionChanged" />
                         <TextBlock x:Name="ServerInfo" Text="" FontFamily="Cascadia Code" FontSize="11"
                                    Foreground="#5a617a" TextWrapping="Wrap" />
+                        <ToggleSwitch x:Name="ForceUdpToggle" OnContent="только UDP" OffContent="WebRTC + UDP"
+                                      FontFamily="Cascadia Code" FontSize="12" />
+                        <TextBlock Text="UDP = низкая латентность (~20ms), без TURN relay" FontFamily="Cascadia Code"
+                                   FontSize="10" Foreground="#5a617a" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 
