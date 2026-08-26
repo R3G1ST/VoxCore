@@ -467,6 +467,12 @@ public sealed class WebRTCVoiceClient : IDisposable
             catch { }
         };
 
+        _pc.oniceconnectionstatechange += (iceState) =>
+        {
+            Log($"ICE state: {iceState}");
+            StatusChanged?.Invoke($"ICE: {iceState}");
+        };
+
         _pc.onconnectionstatechange += (state) =>
         {
             StatusChanged?.Invoke($"WebRTC: {state}");
@@ -517,7 +523,7 @@ public sealed class WebRTCVoiceClient : IDisposable
         var res = _pc.setRemoteDescription(answer);
         Log($"setRemoteDescription: {res}");
 
-        var completed = await Task.WhenAny(connectedTcs.Task, Task.Delay(15000));
+        var completed = await Task.WhenAny(connectedTcs.Task, Task.Delay(30000));
         if (completed == connectedTcs.Task && await connectedTcs.Task)
         {
             Log($"WebRTC connected (opus={BitrateKbps}k vad={IsVadLoaded} df={IsDeepFilterLoaded})");
