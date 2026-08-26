@@ -49,7 +49,14 @@ public sealed partial class MainWindow : Window
             _webrtc = new WebRTCVoiceClient(api, host, _settings);
             _webrtc.AgcEnabled = _settings.AgcEnabled;
             _webrtc.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
-            _webrtc.MembersChanged += (names) => DispatcherQueue.TryEnqueue(() => { _members.Clear(); foreach (var n in names) _members.Add(new MemberItem(n)); });
+            _webrtc.MembersChanged += (names) => DispatcherQueue.TryEnqueue(() =>
+            {
+                var oldNames = _members.Select(m => m.Name).ToList();
+                var newNames = names.ToList();
+                if (oldNames.SequenceEqual(newNames)) return;
+                _members.Clear();
+                foreach (var n in names) _members.Add(new MemberItem(n));
+            });
         }
         catch { _useWebRtc = false; }
 

@@ -91,6 +91,7 @@ public sealed class WebRTCVoiceClient : IDisposable
     public bool AgcEnabled { get; set; } = true;
     public double AgcGainDb => 20.0 * Math.Log10(Math.Max(1e-4, _agc2.CurrentGain));
     public double VadProb => _vad?.LastProb ?? 0;
+    public double VadThreshold => _vadThreshold;
     public bool IsGateOpen => _gate.IsOpen;
 
     // Статы приёма (агрегат по спикерам)
@@ -599,13 +600,22 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (MicGain != 1.0)
                 for (int i = 0; i < FrameSize; i++) frame[i] *= (float)MicGain;
 
-            // 3) Pre-VAD gain boost (before VAD — helps quiet mics)
+            // 3) VAD on normalized copy — Silero VAD expects [-1,1]
+            var vadFrame = new float[FrameSize];
+            frame.AsSpan().CopyTo(vadFrame);
+            float peak = 0f;
+            for (int i = 0; i < FrameSize; i++)
+                peak = Math.Max(peak, Math.Abs(vadFrame[i]));
+            if (peak > 1e-6f)
+                for (int i = 0; i < FrameSize; i++) vadFrame[i] /= peak;
             if (_preVadGain != 1.0f)
-                for (int i = 0; i < FrameSize; i++) frame[i] *= _preVadGain;
+                for (int i = 0; i < FrameSize; i++) vadFrame[i] *= _preVadGain;
+            for (int i = 0; i < FrameSize; i++)
+                vadFrame[i] = Math.Clamp(vadFrame[i], -1f, 1f);
 
             // 4) VAD on PRE-DENOISED audio (BEFORE DFN3 — noise suppressor must not kill speech for VAD)
             bool vadActiveRaw;
-            try { vadActiveRaw = _vad?.Process(frame) ?? true; } catch { vadActiveRaw = true; }
+            try { vadActiveRaw = _vad?.Process(vadFrame) ?? true; } catch { vadActiveRaw = true; }
             bool vadActive = vadActiveRaw && !MicMuted;
 
             // 5) Fire self-speaking events (for graph view + member list)

@@ -136,9 +136,10 @@ public sealed partial class SettingsWindow : Window
         else
         {
             double p = _webrtc!.VadProb;
-            bool speaking = p >= 0.5;
+            double t = _webrtc.VadThreshold;
+            bool speaking = p >= t;
             VadDot.Fill = speaking ? Green() : Yellow();
-            VadStatus.Text = $"{p:0.00} / 0.50 {(speaking ? "речь" : "тишина")}";
+            VadStatus.Text = $"{p:0.00} / {t:0.00} {(speaking ? "речь" : "тишина")}";
             VadStatus.Foreground = speaking ? Green() : Yellow();
         }
 
