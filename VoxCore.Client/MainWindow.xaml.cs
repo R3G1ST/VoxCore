@@ -350,14 +350,24 @@ public sealed partial class MainWindow : Window
                 }
                 else
                 {
-                    string reason = connectTask.IsFaulted
-                        ? $"ошибка: {connectTask.Exception?.GetBaseException().Message}"
+                    string errorDetail = connectTask.IsFaulted
+                        ? connectTask.Exception?.GetBaseException().Message ?? "unknown"
                         : "таймаут ICE (30с)";
-                    _lastWebRtcError = reason;
-                    StatusText.Text = $"WebRTC: {reason}";
-                    WebRTCVoiceClient.Log($"WebRTC fallback: {reason}");
-                    UpdateConnectingOverlay($"WebRTC: {reason}");
+                    string userAction = "";
+                    if (errorDetail.Contains("AudioIncompatible"))
+                        userAction = "\n\nОбнови друга на v1.1.5-beta — его версия отправляет стерео вместо моно.";
+                    else if (errorDetail.Contains("ICE failed") || errorDetail.Contains("таймаут"))
+                        userAction = "\n\nTURN 3478 possibly blocked by firewall. Check:两人 must have direct UDP access or open TURN port.";
+                    else if (errorDetail.Contains("unauthorized"))
+                        userAction = "\n\n重新 авторизуйся (перезайди в аккаунт).";
+                    _lastWebRtcError = errorDetail;
+                    StatusText.Text = $"WebRTC: {errorDetail}";
+                    WebRTCVoiceClient.Log($"WebRTC error: {errorDetail}");
+                    UpdateConnectingOverlay($"WebRTC: {errorDetail}");
                     _webrtc.Disconnect();
+                    HideConnectingOverlay();
+                    await ShowErrorAsync($"WebRTC не подключился:\n{errorDetail}{userAction}\n\nЛог: %TEMP%\\voxcore-client.log");
+                    return;
                 }
             }
             catch (Exception ex)
@@ -367,17 +377,25 @@ public sealed partial class MainWindow : Window
                 WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}");
                 UpdateConnectingOverlay($"ошибка WebRTC: {ex.Message}");
                 _webrtc.Disconnect();
+                HideConnectingOverlay();
+                await ShowErrorAsync($"WebRTC ошибка:\n{ex.Message}\n\nЛог: %TEMP%\\voxcore-client.log");
+                return;
             }
         }
 
         // WebRTC only — no UDP fallback
         if (!connected)
         {
-            string reason = "";
-            if (_lastWebRtcError.Length > 0) reason = $": {_lastWebRtcError}";
             if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
             HideConnectingOverlay();
-            await ShowErrorAsync($"не удалось подключиться к голосовому каналу (WebRTC{reason})");
+            string hint = "";
+            if (_lastWebRtcError.Contains("AudioIncompatible"))
+                hint = "\n\n→ Обнови ВСЕХ клиентов на v1.1.5-beta";
+            else if (_lastWebRtcError.Contains("ICE") || _lastWebRtcError.Contains("таймаут"))
+                hint = "\n\n→ TURN 3478 заблокирован фаерволом. Нужно: оба в одной сети или открыть UDP 3478";
+            else if (_lastWebRtcError.Length == 0)
+                hint = "\n\n→ WebRTC не инициализирован. Проверь лог: %TEMP%\\voxcore-client.log";
+            await ShowErrorAsync($"Не удалось подключиться к голосовому каналу\n\nОшибка: {_lastWebRtcError}{hint}\n\nЛог: %TEMP%\\voxcore-client.log");
             return;
         }
 
