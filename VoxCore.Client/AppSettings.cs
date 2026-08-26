@@ -41,9 +41,9 @@ public sealed class AppSettings
                 var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath));
                 if (loaded is not null)
                 {
-                    // Ensure VAD settings are not stuck at old defaults
-                    if (loaded.VadThreshold > 0.5) loaded.VadThreshold = 0.1;
-                    if (loaded.PreVadGain < 2.0f) loaded.PreVadGain = 3.0f;
+                    // Migration: reset old VAD defaults that don't work with new pipeline (VAD before DFN3)
+                    if (loaded.VadThreshold >= 0.2) loaded.VadThreshold = 0.1;
+                    if (loaded.PreVadGain <= 2.5f) loaded.PreVadGain = 3.0f;
                     return loaded;
                 }
             }

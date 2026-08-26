@@ -613,12 +613,14 @@ public sealed class WebRTCVoiceClient : IDisposable
             if (talking != _lastSelfTalking)
             {
                 _lastSelfTalking = talking;
+                Log($"Self-speaking: talking={talking}, vadProb={_vad?.LastProb:F3}, vadThreshold={_vadThreshold}, preVadGain={_preVadGain}, micGain={MicGain}");
                 TalkingChanged?.Invoke(talking);
                 if (!string.IsNullOrEmpty(SelfName))
                 {
                     if (talking) SpeakerStarted?.Invoke(SelfName);
                     else SpeakerStopped?.Invoke(SelfName);
                 }
+                else Log("Self-speaking: SelfName is empty!");
             }
 
             // 6) AEC3 (APM) — adaptive delay, 10ms chunks via dedicated thread

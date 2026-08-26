@@ -395,7 +395,8 @@ static async Task WebRtcCleanupLoopAsync(ConcurrentDictionary<string, Concurrent
                     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] WEBRTC CLEANUP room={roomId} userId={userId} state={st}");
                 }
             }
-            if (room.IsEmpty) webrtcRooms.TryRemove(roomId, out _);
+            // Don't remove empty rooms here — they're created in WebRTCJoin before the offer arrives.
+            // Rooms are removed in WebRTCLeave when the last user explicitly leaves.
         }
     }
 }
