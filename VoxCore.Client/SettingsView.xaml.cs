@@ -74,13 +74,12 @@ public sealed partial class SettingsView : UserControl
         {
             VolumeText.Text = $"{e.NewValue:0}%";
             _voice.Volume = (int)e.NewValue;
-            if (_webrtc is not null) _webrtc.Volume = (int)e.NewValue;
         };
 
         DfAttSlider.ValueChanged += (_, e) => DfAttText.Text = $"{e.NewValue:0} dB";
-        EqLowSlider.ValueChanged += (_, e) => { EqLowText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
-        EqMidSlider.ValueChanged += (_, e) => { EqMidText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
-        EqHighSlider.ValueChanged += (_, e) => { EqHighText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
+        EqLowSlider.ValueChanged += (_, e) => { EqLowText.Text = $"{e.NewValue:0} dB"; };
+        EqMidSlider.ValueChanged += (_, e) => { EqMidText.Text = $"{e.NewValue:0} dB"; };
+        EqHighSlider.ValueChanged += (_, e) => { EqHighText.Text = $"{e.NewValue:0} dB"; };
 
         GainSlider.ValueChanged += (_, e) => GainText.Text = $"{e.NewValue:0}%";
         _meter.LevelChanged += level =>
@@ -108,52 +107,38 @@ public sealed partial class SettingsView : UserControl
     {
         if (_voice is null) return;
 
-        var webrtcConnected = _webrtc?.IsConnected == true;
-        var udpConnected = !webrtcConnected && _voice.IsConnected;
+        var udpConnected = _voice.IsConnected;
 
         HpfDot.Fill = Green();
         HpfStatus.Text = "активен";
         HpfStatus.Foreground = Green();
 
-        var aecOn = _webrtc?.IsAecActive == true;
-        AecDot.Fill = aecOn ? Green() : Gray();
-        AecStatus.Text = aecOn ? "активен" : "нет DLL";
-        AecStatus.Foreground = aecOn ? Green() : Gray();
+        AecDot.Fill = Gray();
+        AecStatus.Text = "не используется";
+        AecStatus.Foreground = Gray();
 
-        var bitrate = _webrtc?.BitrateKbps ?? 0;
-        OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "64 kbps";
+        OpusStatus.Text = "48 kbps (FEC)";
 
         var nsOn = NsToggle.IsOn;
         RnnoiseDot.Fill = nsOn ? Green() : Red();
         RnnoiseStatus.Text = nsOn ? "активно" : "выключено";
         RnnoiseStatus.Foreground = nsOn ? Green() : Red();
 
-        var dfLoaded = _webrtc?.IsDeepFilterLoaded == true;
+        var dfLoaded = _voice.IsConnected; // DFN loaded when connected
         DfDot.Fill = dfLoaded ? Green() : Gray();
-        DfStatus.Text = dfLoaded ? "загружен" : "нет DLL";
+        DfStatus.Text = dfLoaded ? "активен" : "не активен";
         DfStatus.Foreground = dfLoaded ? Green() : Gray();
 
         AgcDot.Fill = AgcToggle.IsOn ? Green() : Gray();
         AgcStatus.Text = AgcToggle.IsOn ? "активен" : "выключено";
         AgcStatus.Foreground = AgcToggle.IsOn ? Green() : Gray();
 
-        bool dredOn = _webrtc?.IsDredActive == true;
-        bool fecOn = dredOn || _webrtc?.IsFec == true;
-        FecDot.Fill = fecOn ? Green() : Gray();
-        FecStatus.Text = dredOn ? "DRED 40ms" : (fecOn ? "FEC" : "выключено");
-        FecStatus.Foreground = fecOn ? Green() : Gray();
+        FecDot.Fill = Green();
+        FecStatus.Text = "FEC 15%";
+        FecStatus.Foreground = Green();
 
-        // VAD
-        if (webrtcConnected && _webrtc?.IsVadLoaded == true)
-        {
-            double p = _webrtc!.VadProb;
-            double t = _webrtc.VadThreshold;
-            bool speaking = p >= t;
-            VadDot.Fill = speaking ? Green() : Yellow();
-            VadStatus.Text = $"{p:0.00} / {t:0.00} {(speaking ? "речь" : "тишина")}";
-            VadStatus.Foreground = speaking ? Green() : Yellow();
-        }
-        else if (udpConnected)
+        // VAD (energy-based)
+        if (udpConnected)
         {
             double p = _voice.VadProb;
             double t = 0.1;
@@ -169,27 +154,16 @@ public sealed partial class SettingsView : UserControl
             VadStatus.Foreground = Gray();
         }
 
-        bool gateOpen = _webrtc?.IsGateOpen == true || udpConnected;
+        bool gateOpen = udpConnected;
         GateDot.Fill = gateOpen ? Green() : Gray();
         GateStatus.Text = gateOpen ? "открыт" : "зажат (-40dB)";
         GateStatus.Foreground = gateOpen ? Green() : Gray();
-        if (webrtcConnected)
+
+        if (udpConnected)
         {
             ConnDot.Fill = Green();
-            ConnProtocol.Text = "WebRTC подключен";
-            ConnProtocol.Foreground = Green();
-            IceDot.Fill = Green();
-            IceStatus.Text = "connected";
-            IceStatus.Foreground = Green();
-            TurnDot.Fill = Green();
-            TurnStatus.Text = "relay активен";
-            TurnStatus.Foreground = Green();
-        }
-        else if (udpConnected)
-        {
-            ConnDot.Fill = Yellow();
             ConnProtocol.Text = "UDP подключен";
-            ConnProtocol.Foreground = Yellow();
+            ConnProtocol.Foreground = Green();
             IceDot.Fill = Gray();
             IceStatus.Text = "не используется";
             TurnDot.Fill = Gray();

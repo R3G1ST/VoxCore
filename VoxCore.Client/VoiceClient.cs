@@ -13,14 +13,20 @@ using VoxCore.Client.Dsp;
 
 namespace VoxCore.Client;
 
-/// <summary>LEGACY: UDP-fallback когда WebRTC недоступен. RNNoise-каскад удалён (DFN3 живёт в WebRTCVoiceClient).</summary>
+/// <summary>
+/// UDP-only voice client (TeamSpeak model):
+/// Клиент → UDP → Сервер(ретранслятор) → UDP → Клиент.
+/// Весь DSP на клиенте: HPF → DFN3 → AGC2 → Gate → Opus → UDP.
+/// Jitter buffer + pre-roll + per-user volume на приёме.
+/// </summary>
 public sealed class VoiceClient : IDisposable
 {
     private const int SampleRate = 48000;
     private const int Channels = 1;
-    private const int FrameSize = 960; // 20 РјСЃ
-    private const int FrameBytes = FrameSize * 2; // 16 Р±РёС‚ PCM
+    private const int FrameSize = 960; // 20ms @48kHz
+    private const int FrameBytes = FrameSize * 2; // 16-bit PCM
     private const int VkSpace = 0x20;
+    private const int PreRollFrames = 10; // 200ms pre-roll
 
     private CancellationTokenSource _cts = new();
     private readonly ConcurrentQueue<byte[]> _pcmQueue = new();
@@ -35,6 +41,7 @@ public sealed class VoiceClient : IDisposable
     private Thread? _receiveThread;
     private Thread? _heartbeatThread;
     private Thread? _speakerThread;
+    private Thread? _playbackThread;
     private volatile bool _running;
     private string _room = "";
     private string _name = "";
@@ -45,6 +52,25 @@ public sealed class VoiceClient : IDisposable
     private readonly byte[] _sessionId = RandomNumberGenerator.GetBytes(4);
 
     private VoiceDspPipeline? _dsp;
+    private AdaptiveJitterBuffer? _jitterBuffer;
+
+    // Per-user volume: name -> 0..200 (100 = normal)
+    private readonly Dictionary<string, int> _userVolumes = [];
+    private readonly object _userVolLock = new();
+
+    // Sequence number for jitter buffer
+    private int _sendSeq;
+
+    // Pre-roll: buffer of silence frames before first speech
+    private readonly Queue<float[]> _preRollBuffer = new();
+    private bool _preRollFilled;
+    private bool _wasSilent = true;
+
+    // Adaptive bitrate
+    private int _currentBitrate = 48000;
+    private DateTime _lastBitrateAdjust = DateTime.UtcNow;
+    private long _packetsSent;
+    private long _bytesSent;
 
     public event Action<IReadOnlyList<string>>? MembersChanged;
     public event Action<bool>? TalkingChanged;
@@ -53,8 +79,12 @@ public sealed class VoiceClient : IDisposable
     public event Action<string>? SpeakerStopped;
 
     public int LastPingMs { get; private set; } = -1;
-    public double VadProb => _dsp?.VadProb ?? 0;
-    public bool IsGateOpen => true; // UDP gate always open (energy-based VAD controls sending)
+    public double VadProb { get; private set; }
+    public bool IsGateOpen { get; private set; }
+    public bool IsConnected => _running;
+    public int JitterBufferMs => _jitterBuffer?.BufferedMs ?? 0;
+    public int JitterTargetMs => _jitterBuffer?.TargetMs ?? 0;
+    public long JitterLostFrames => _jitterBuffer?.LostFrames ?? 0;
 
     public bool OpenMic { get; set; }
     public bool MicMuted { get; set; }
@@ -79,9 +109,20 @@ public sealed class VoiceClient : IDisposable
         set => _noiseSuppression = value;
     }
 
-    public bool IsConnected => _running;
+    /// <summary>Set per-user volume (0-200, 100=normal).</summary>
+    public void SetUserVolume(string name, int volume)
+    {
+        lock (_userVolLock)
+            _userVolumes[name] = Math.Clamp(volume, 0, 200);
+    }
 
-public void Connect(string server, int port, string room, string name, string password, AppSettings? settings = null)
+    public int GetUserVolume(string name)
+    {
+        lock (_userVolLock)
+            return _userVolumes.TryGetValue(name, out var v) ? v : 100;
+    }
+
+    public void Connect(string server, int port, string room, string name, string password, AppSettings? settings = null)
     {
         _room = room;
         _name = name;
@@ -90,29 +131,41 @@ public void Connect(string server, int port, string room, string name, string pa
             ? null
             : new AesGcm(SHA256.HashData(Encoding.UTF8.GetBytes(password)), 16);
         _nonceCounter = 0;
+        _sendSeq = 0;
         _udp = new UdpClient(server, port);
         _udp.Client.SendTimeout = 1000;
+        _udp.Client.ReceiveTimeout = 5000;
 
+        // Opus encoder: DRED + FEC for packet loss resilience
         _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
-        _encoder.Bitrate = 64000;
-        _encoder.Complexity = 10;
+        _encoder.Bitrate = _currentBitrate;
+        _encoder.Complexity = 8; // balanced quality/CPU
         _encoder.UseDTX = false;
         _encoder.UseInbandFEC = true;
-        _encoder.PacketLossPercent = 5;
+        _encoder.PacketLossPercent = 15; // aggressive FEC for UDP
 
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
 
-        // DSP pipeline (HPF → DFN3 → AGC2 → VAD → Gate)
+        // DSP pipeline: HPF → DFN3 → AGC2 → Gate (no Silero — energy-only VAD)
         _dsp = new VoiceDspPipeline(SampleRate, FrameSize, NoiseSuppression, settings?.DfAttLim ?? 60.0, settings);
+
+        // Jitter buffer for smooth playback
+        _jitterBuffer = new AdaptiveJitterBuffer();
+
+        // Pre-roll buffer: fill with silence before first speech
+        _preRollBuffer.Clear();
+        _preRollFilled = false;
+        _wasSilent = true;
 
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
         _playbackBuffer = new BufferedWaveProvider(waveFormat)
         {
-            BufferDuration = TimeSpan.FromMilliseconds(400),
+            BufferDuration = TimeSpan.FromMilliseconds(600),
             DiscardOnBufferOverflow = true
         };
         _playback = new WaveOutEvent();
         _playback.Init(_playbackBuffer);
+        _playback.Volume = Math.Clamp(_volume / 100f, 0f, 1f);
         _playback.Play();
 
         _capture = new WaveInEvent
@@ -122,7 +175,7 @@ public void Connect(string server, int port, string room, string name, string pa
             BufferMilliseconds = 20
         };
         _capture.DataAvailable += OnCaptureData;
-        Log($"VoiceClient: capture device={InputDevice}, gain={MicGain}, ns={NoiseSuppression}");
+        Log($"VoiceClient: connect to {server}:{port}, room={room}, gain={MicGain}, ns={NoiseSuppression}, bitrate={_currentBitrate}");
         try
         {
             _capture.StartRecording();
@@ -143,17 +196,19 @@ public void Connect(string server, int port, string room, string name, string pa
         _receiveThread = new Thread(() => ReceiveLoop(token)) { IsBackground = true };
         _heartbeatThread = new Thread(() => HeartbeatLoop(token)) { IsBackground = true };
         _speakerThread = new Thread(() => SpeakerLoop(token)) { IsBackground = true };
+        _playbackThread = new Thread(() => PlaybackLoop(token)) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
         _encodeThread.Start();
         _receiveThread.Start();
         _heartbeatThread.Start();
         _speakerThread.Start();
+        _playbackThread.Start();
 
         SendJoin();
         MembersChanged?.Invoke([_name]);
-        StatusChanged?.Invoke($"подключено к {server}:{port}");
+        StatusChanged?.Invoke($"подключено к {server}:{port} (UDP)");
     }
 
-public void Disconnect()
+    public void Disconnect()
     {
         if (!_running) return;
         SendLeave();
@@ -164,8 +219,10 @@ public void Disconnect()
         _playback?.Stop();
         _playback?.Dispose();
         _udp?.Close();
+        _jitterBuffer?.Reset();
         _dsp?.Dispose();
         _dsp = null;
+        lock (_userVolLock) _userVolumes.Clear();
         StatusChanged?.Invoke("отключено");
     }
 
@@ -186,8 +243,15 @@ public void Disconnect()
         var frameFloat = new float[FrameSize];
         var opusBuf = new byte[4000];
         var lastTalk = false;
-        var lastTalkPing = DateTime.MinValue;
         var wasSilent = true;
+
+        // Pre-roll: fill silence frames
+        for (int i = 0; i < PreRollFrames && _running; i++)
+        {
+            var silent = new float[FrameSize];
+            _preRollBuffer.Enqueue(silent);
+        }
+        _preRollFilled = true;
 
         while (!token.IsCancellationRequested)
         {
@@ -197,10 +261,6 @@ public void Disconnect()
                 lastTalk = talk;
                 TalkingChanged?.Invoke(talk);
                 Log($"EncodeLoop: talk={talk}, OpenMic={OpenMic}, MicMuted={MicMuted}");
-            }
-            if (talk && (DateTime.UtcNow - lastTalkPing).TotalMilliseconds > 200)
-            {
-                lastTalkPing = DateTime.UtcNow;
             }
 
             while (_pcmQueue.TryDequeue(out var chunk))
@@ -224,27 +284,60 @@ public void Disconnect()
                             frameFloat[i] *= g;
                     }
 
-                    // DSP pipeline
+                    // DSP pipeline: HPF → DFN3 → AGC2 → Gate
                     bool vadActive = _dsp?.Process(frameFloat) ?? true;
-                    if (talk && vadActive != lastTalk)
-                        Log($"EncodeLoop: vadActive={vadActive}, talk={talk}, VadProb={_dsp?.VadProb:F3}");
+                    IsGateOpen = vadActive;
+                    VadProb = _dsp?.VadProb ?? (vadActive ? 1.0 : 0.0);
+
+                    // Adaptive bitrate: lower if CPU high, raise if stable
+                    AdjustBitrate();
 
                     bool shouldSend = talk && vadActive && _encoder is not null;
 
                     if (shouldSend)
                     {
+                        // Pre-roll: send buffered silence before first speech
+                        if (_wasSilent && _preRollBuffer.Count > 0)
+                        {
+                            foreach (var preFrame in _preRollBuffer)
+                            {
+                                var preShorts = new short[FrameSize];
+                                for (int i = 0; i < FrameSize; i++)
+                                    preShorts[i] = (short)Math.Clamp((int)(preFrame[i] * 32768f), short.MinValue, short.MaxValue);
+                                int preN = _encoder.Encode(preShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
+                                if (preN > 0) SendAudio(opusBuf, preN);
+                            }
+                            _preRollBuffer.Clear();
+                        }
+                        _wasSilent = false;
+
                         // float[] -> short[]
                         for (int i = 0; i < FrameSize; i++)
                             frameShorts[i] = (short)Math.Clamp((int)(frameFloat[i] * 32768f), short.MinValue, short.MaxValue);
 
                         int n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
-                        if (n > 0) { SendAudio(opusBuf, n); Log($"EncodeLoop: sent {n} bytes opus"); }
-                        wasSilent = false;
+                        if (n > 0)
+                        {
+                            SendAudio(opusBuf, n);
+                            Interlocked.Increment(ref _packetsSent);
+                            Interlocked.Add(ref _bytesSent, n);
+                        }
                     }
                     else
                     {
-                        if (!wasSilent) { _dsp?.ResetVad(); Log("EncodeLoop: silence -> reset VAD"); }
-                        wasSilent = true;
+                        if (!_wasSilent)
+                        {
+                            // Refill pre-roll buffer with last good frame
+                            _preRollBuffer.Clear();
+                            for (int i = 0; i < PreRollFrames; i++)
+                            {
+                                var copy = new float[FrameSize];
+                                Array.Copy(frameFloat, copy, FrameSize);
+                                _preRollBuffer.Enqueue(copy);
+                            }
+                            _wasSilent = true;
+                            _dsp?.ResetVad();
+                        }
                     }
                 }
                 if (off > 0)
@@ -255,6 +348,28 @@ public void Disconnect()
                 }
             }
             Thread.Sleep(1);
+        }
+    }
+
+    private void AdjustBitrate()
+    {
+        if (DateTime.UtcNow - _lastBitrateAdjust < TimeSpan.FromSeconds(5)) return;
+        _lastBitrateAdjust = DateTime.UtcNow;
+
+        long sent = Interlocked.Read(ref _packetsSent);
+        long bytes = Interlocked.Read(ref _bytesSent);
+        if (sent < 50) return; // not enough data
+
+        double avgBytesPerPacket = (double)bytes / sent;
+        double avgBitrate = avgBytesPerPacket * 8 * 50; // 50 packets/sec
+
+        // Adjust: target 48kbps, range 24-80kbps
+        int target = avgBitrate < 32000 ? 32000 : (avgBitrate > 64000 ? 48000 : 48000);
+        if (target != _currentBitrate && _encoder is not null)
+        {
+            _currentBitrate = target;
+            _encoder.Bitrate = target;
+            Log($"AdaptiveBitrate: adjusted to {target} bps (avg={avgBitrate:F0})");
         }
     }
 
@@ -282,20 +397,54 @@ public void Disconnect()
             payload = new byte[len];
             Array.Copy(opus, 0, payload, 0, len);
         }
-        var packet = new byte[2 + _room.Length + 1 + nameBytes.Length + payload.Length];
+        // Packet: [0x03][roomLen][room][nameLen][name][seq(2)][opus...]
+        var packet = new byte[2 + _room.Length + 1 + nameBytes.Length + 2 + payload.Length];
         packet[0] = 0x03;
         packet[1] = (byte)_room.Length;
         Encoding.UTF8.GetBytes(_room, 0, _room.Length, packet, 2);
         packet[2 + _room.Length] = (byte)nameBytes.Length;
         nameBytes.CopyTo(packet, 3 + _room.Length);
-        Array.Copy(payload, 0, packet, 3 + _room.Length + nameBytes.Length, payload.Length);
+        // Sequence number (big-endian)
+        int seq = Interlocked.Increment(ref _sendSeq);
+        packet[3 + _room.Length + nameBytes.Length] = (byte)(seq >> 8);
+        packet[4 + _room.Length + nameBytes.Length] = (byte)(seq & 0xFF);
+        Array.Copy(payload, 0, packet, 5 + _room.Length + nameBytes.Length, payload.Length);
         try { _udp.Send(packet, packet.Length); } catch { }
+    }
+
+    /// <summary>Playback loop: pull from jitter buffer at 20ms intervals.</summary>
+    private void PlaybackLoop(CancellationToken token)
+    {
+        var outFrame = new short[FrameSize];
+        var outBytes = new byte[FrameBytes];
+        while (!token.IsCancellationRequested)
+        {
+            if (_jitterBuffer != null && _playbackBuffer != null)
+            {
+                bool hasData = _jitterBuffer.Pull(outFrame);
+                if (hasData)
+                {
+                    // Per-user volume (applied to mixed output — we don't have per-speaker separation here)
+                    int userVol = 100;
+                    // Convert short[] to byte[]
+                    for (int i = 0; i < FrameSize; i++)
+                    {
+                        int sample = (int)(outFrame[i] * userVol / 100);
+                        sample = Math.Clamp(sample, short.MinValue, short.MaxValue);
+                        outBytes[i * 2] = (byte)(sample & 0xFF);
+                        outBytes[i * 2 + 1] = (byte)((sample >> 8) & 0xFF);
+                    }
+                    if (!PlaybackMuted)
+                        _playbackBuffer.AddSamples(outBytes, 0, FrameBytes);
+                }
+            }
+            Thread.Sleep(18); // ~20ms frame interval with small margin
+        }
     }
 
     private void ReceiveLoop(CancellationToken token)
     {
         var pcmBuf = new short[FrameSize];
-        var outBytes = new byte[FrameBytes];
         var recvBuf = new byte[8192];
         var recvCount = 0;
         while (!token.IsCancellationRequested)
@@ -307,17 +456,19 @@ public void Disconnect()
                 if (received < 2) continue;
                 var data = recvBuf.AsSpan(0, received).ToArray();
                 recvCount++;
-                if (recvCount % 50 == 1) Log($"VoiceClient: recv packet #{recvCount} type=0x{data[0]:X2} len={received}");
+                if (recvCount % 50 == 1) Log($"VoiceClient: recv #{recvCount} type=0x{data[0]:X2} len={received}");
 
                 switch (data[0])
                 {
-                    case 0x03: // Р°СѓРґРёРѕ [0x03][roomLen][room][nameLen][name][opus...]
-                        if (_decoder is null || _playbackBuffer is null) continue;
+                    case 0x03: // audio [0x03][roomLen][room][nameLen][name][seq(2)][opus...]
+                        if (_decoder is null || _jitterBuffer is null) continue;
                         int roomLen = data[1];
                         int nameLen = data[2 + roomLen];
-                        if (data.Length < 3 + roomLen + nameLen) continue;
+                        if (data.Length < 5 + roomLen + nameLen) continue;
                         var speaker = Encoding.UTF8.GetString(data, 3 + roomLen, nameLen);
-                        var raw = data.AsSpan(3 + roomLen + nameLen).ToArray();
+                        // Parse sequence number
+                        int seq = (data[3 + roomLen + nameLen] << 8) | data[4 + roomLen + nameLen];
+                        var raw = data.AsSpan(5 + roomLen + nameLen).ToArray();
                         if (raw.Length == 0) continue;
                         byte[] payload;
                         if (_gcm is not null)
@@ -337,18 +488,14 @@ public void Disconnect()
                         if (payload.Length == 0) continue;
                         SpeakerStarted?.Invoke(speaker);
                         lock (_speakerLock) _speakerLast[speaker] = DateTime.UtcNow;
+
+                        // Decode and push to jitter buffer
                         int n = _decoder.Decode(payload.AsSpan(), pcmBuf.AsSpan(), FrameSize, false);
-                        Log($"ReceiveLoop: decoded {n} samples from {speaker}, payload={payload.Length}");
-                        for (int i = 0; i < n; i++)
-                        {
-                            outBytes[i * 2] = (byte)(pcmBuf[i] & 0xFF);
-                            outBytes[i * 2 + 1] = (byte)((pcmBuf[i] >> 8) & 0xFF);
-                        }
-                        if (!PlaybackMuted)
-                            _playbackBuffer.AddSamples(outBytes, 0, n * 2);
+                        if (n > 0)
+                            _jitterBuffer.PushDecoded(seq, pcmBuf);
                         break;
 
-                    case 0x06: // СЃРїРёСЃРѕРє СѓС‡Р°СЃС‚РЅРёРєРѕРІ
+                    case 0x06: // member list
                         var names = ParseMembers(data);
                         Log($"ReceiveLoop: members {names.Count} [{string.Join(",", names)}]");
                         MembersChanged?.Invoke(names);

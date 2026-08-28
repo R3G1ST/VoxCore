@@ -339,85 +339,41 @@ public sealed partial class MainWindow : Window
         }
 
         ShowConnectingOverlay(ch.Name, 0);
-        void OverlayHandler(string msg) => DispatcherQueue.TryEnqueue(() => UpdateConnectingOverlay(msg));
-        if (_webrtc != null) _webrtc.StatusChanged += OverlayHandler;
 
         LeaveChannel();
         bool connected = false;
 
-        // Try WebRTC first (with 30s timeout) — skip if ForceUdp
-        if (_useWebRtc && _webrtc != null && !_settings.ForceUdp)
+        // UDP-only: connect directly to voice server
+        try
         {
-            try
-            {
-                UpdateConnectingOverlay("подключение к WebRTC...");
-                var connectTask = _webrtc.ConnectAsync(ch.Id);
-                var completed = await Task.WhenAny(connectTask, Task.Delay(30000));
-                if (completed == connectTask && !connectTask.IsFaulted)
-                {
-                    await connectTask;
-                    connected = true;
-                    UpdateConnectingOverlay("WebRTC подключен");
-                }
-                else
-                {
-                    string errorDetail = connectTask.IsFaulted
-                        ? connectTask.Exception?.GetBaseException().Message ?? "unknown"
-                        : "таймаут ICE (30с)";
-                    WebRTCVoiceClient.Log($"WebRTC error: {errorDetail}, falling back to UDP");
-                    _webrtc.Disconnect();
-                }
-            }
-            catch (Exception ex)
-            {
-                WebRTCVoiceClient.Log($"WebRTC failed: {ex.Message}, falling back to UDP");
-                _webrtc.Disconnect();
-            }
+            UpdateConnectingOverlay("подключение к UDP...");
+            var serverHost = _settings.Server.Split(':')[0];
+            var serverPort = _settings.VoicePort;
+            _voice.Connect(serverHost, serverPort, ch.Id.ToString(), _user.Name, password, _settings);
+            connected = true;
+            UpdateConnectingOverlay("UDP подключен (DSP активен)");
+            await Task.Delay(300);
         }
-
-        // Fallback to UDP (VoiceClient with full DSP pipeline)
-        if (!connected && _voice is not null)
+        catch (Exception ex)
         {
-            try
-            {
-                UpdateConnectingOverlay("WebRTC недоступен, подключаю UDP...");
-                await Task.Delay(500); // ensure capture device is released
-                var serverHost = _settings.Server.Split(':')[0];
-                var serverPort = _settings.VoicePort;
-                _voice.Connect(serverHost, serverPort, ch.Id.ToString(), _user.Name, ch.HasPassword ? "" : "", _settings);
-                connected = true;
-                UpdateConnectingOverlay("UDP подключен (DSP активен)");
-                await Task.Delay(500);
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = $"UDP failed: {ex.Message}";
-                UpdateConnectingOverlay($"ошибка: {ex.Message}");
-                await ShowErrorAsync($"Не удалось подключиться:\n{ex.Message}\n\nЛог: %TEMP%\\voxcore-client.log");
-                HideConnectingOverlay();
-                return;
-            }
-        }
-
-        if (!connected)
-        {
+            StatusText.Text = $"UDP failed: {ex.Message}";
+            UpdateConnectingOverlay($"ошибка: {ex.Message}");
+            await ShowErrorAsync($"Не удалось подключиться:\n{ex.Message}\n\nЛог: %TEMP%\\voxcore-client.log");
             HideConnectingOverlay();
-            await ShowErrorAsync("Не удалось подключиться к голосовому каналу");
             return;
         }
 
-        if (_webrtc != null) _webrtc.StatusChanged -= OverlayHandler;
         HideConnectingOverlay();
 
         _currentChannel = ch;
         ChannelNameText.Text = ch.Name;
-        ChannelStatusText.Text = connected ? (_useWebRtc && _webrtc?.IsConnected == true ? "WebRTC подключен" : "UDP подключен (DSP)") : "не подключен";
+        ChannelStatusText.Text = "UDP подключен (DSP)";
         LeaveChannelBtn.Visibility = Visibility.Visible;
         VoiceChannelName.Text = ch.Name;
         VoiceServerName.Text = "VoxCore";
         VoiceConnectedPanel.Visibility = Visibility.Visible;
         VoiceStatusPanel.Visibility = Visibility.Collapsed;
-        StatusText.Text = connected ? $"WebRTC: {ch.Name}" : "ошибка";
+        StatusText.Text = $"UDP: {ch.Name}";
         ChannelChatPanel.Visibility = Visibility.Visible;
         _lastChannelMsgId = 0;
         _channelMessages.Clear();
@@ -430,7 +386,6 @@ public sealed partial class MainWindow : Window
     private void LeaveChannel()
     {
         _voice.Disconnect();
-        _webrtc?.Disconnect();
         _activeScreenShare?.StopCapture();
         _activeScreenShare?.Dispose();
         _activeScreenShare = null;

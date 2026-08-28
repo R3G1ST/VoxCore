@@ -6,8 +6,8 @@ using VoxCore.Client.Dsp;
 namespace VoxCore.Client;
 
 /// <summary>
-/// Единый голосовой конвейер для WebRTC и UDP: HPF → DFN3 → AGC2 → VAD → Gate.
-/// AEC3 не включаем (нет рендер-потока в UDP).
+/// UDP-only DSP pipeline: HPF → DFN3 → AGC2 → Gate.
+/// Energy-based VAD only (no Silero — broken ONNX).
 /// </summary>
 public sealed class VoiceDspPipeline : IDisposable
 {
@@ -19,15 +19,14 @@ public sealed class VoiceDspPipeline : IDisposable
     private HpfBiquad? _hpf;
     private DeepFilterNet? _dfn;
     private Agc2Limiter? _agc;
-    private SileroVad? _vad;
     private NoiseGate? _gate;
 
-    private double _vadThreshold = 0.1; // ниже = чувствительнее
-    private float _preVadGain = 3.0f;   // буст перед VAD
+    private double _vadThreshold = 0.1; // lower = more sensitive
+    private float _preVadGain = 3.0f;   // boost before VAD
 
     public bool IsDfnLoaded => _dfn?.IsLoaded ?? false;
-    public bool IsVadLoaded => _vad != null;
-    public double VadProb => _vad?.LastProb ?? 0;
+    public bool IsVadLoaded => false; // no Silero
+    public double VadProb { get; private set; }
     public double VadThreshold { get => _vadThreshold; set => _vadThreshold = Math.Clamp(value, 0.05, 0.9); }
     public float PreVadGain { get => _preVadGain; set => _preVadGain = Math.Clamp(value, 0.5f, 10f); }
 
@@ -45,7 +44,7 @@ public sealed class VoiceDspPipeline : IDisposable
         _agc = new Agc2Limiter(-18, 18, sampleRate, 5);
         _gate = new NoiseGate(-40, sampleRate, frameSize);
 
-        // DeepFilterNet3
+        // DeepFilterNet3 (neural denoiser)
         if (_noiseSuppression)
         {
             var dfLocal = Path.Combine(
@@ -58,23 +57,6 @@ public sealed class VoiceDspPipeline : IDisposable
                 _dfn = new DeepFilterNet(dfPath, sampleRate, dfAttLim);
                 try { _dfn.Warmup(); } catch { }
             }
-        }
-
-        // Silero VAD
-        var modelLocal = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "VoxCore", "models", "silero_vad.onnx");
-        var modelApp = Path.Combine(AppContext.BaseDirectory, "models", "silero_vad.onnx");
-        var modelDir = Path.GetDirectoryName(modelLocal)!;
-        if (!File.Exists(modelLocal) && File.Exists(modelApp))
-        {
-            Directory.CreateDirectory(modelDir);
-            File.Copy(modelApp, modelLocal, true);
-        }
-        var modelPath = File.Exists(modelLocal) ? modelLocal : modelApp;
-        if (File.Exists(modelPath))
-        {
-            _vad = new SileroVad(modelPath);
         }
 
         // Settings sync
@@ -120,38 +102,27 @@ public sealed class VoiceDspPipeline : IDisposable
     }
 
     /// <summary>
-    /// Обработка одного кадра 20мс. Возвращает true если речь (VAD открыт).
-    /// Вход/выход: float[] длина frameSize (-1..1).
+    /// Process one 20ms frame. Returns true if speech (energy VAD active).
+    /// In/Out: float[] length frameSize (-1..1).
     /// </summary>
     public bool Process(Span<float> frame)
     {
         // 1) HPF
         _hpf?.Process(frame);
 
-        // 2) Pre-VAD gain boost (before VAD — helps quiet mics)
+        // 2) Pre-VAD gain boost
         if (_preVadGain != 1.0f)
         {
             for (int i = 0; i < _frameSize; i++)
                 frame[i] *= _preVadGain;
         }
 
-        // 3) VAD on PRE-DENOISED audio (before DFN3 — noise suppressor must not kill speech for VAD)
-        bool vadActiveRaw = false;
-        try
-        {
-            var _ = _vad?.Process(frame) ?? true;
-            var prob = _vad?.LastProb ?? 1.0;
-            vadActiveRaw = prob >= _vadThreshold;
-            // Energy fallback: if Silero broken, use RMS energy
-            if (!vadActiveRaw)
-            {
-                double sum = 0;
-                for (int i = 0; i < _frameSize; i++) sum += frame[i] * frame[i];
-                double rms = Math.Sqrt(sum / _frameSize);
-                vadActiveRaw = rms > 0.002;
-            }
-        }
-        catch { vadActiveRaw = true; }
+        // 3) Energy-based VAD (reliable, no ONNX dependency)
+        double sum = 0;
+        for (int i = 0; i < _frameSize; i++) sum += frame[i] * frame[i];
+        double rms = Math.Sqrt(sum / _frameSize);
+        bool vadActive = rms > _vadThreshold;
+        VadProb = Math.Clamp(rms * 10, 0, 1); // normalized for display
 
         // 4) DeepFilterNet3 (after VAD)
         if (_dfn != null && _dfn.IsLoaded)
@@ -165,19 +136,17 @@ public sealed class VoiceDspPipeline : IDisposable
         _agc?.Process(frame);
 
         // 6) Gate with VAD override
-        if (vadActiveRaw) _gate?.ForceOpen();
+        if (vadActive) _gate?.ForceOpen();
         _gate?.Process(frame);
 
-        return vadActiveRaw;
+        return vadActive;
     }
 
-    public void ResetVad() => _vad?.Reset();
+    public void ResetVad() { /* no-op: energy VAD needs no reset */ }
 
     public void Dispose()
     {
         _dfn?.Dispose();
-        _vad?.Dispose();
         _dfn = null;
-        _vad = null;
     }
 }
