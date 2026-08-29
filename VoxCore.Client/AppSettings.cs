@@ -7,7 +7,6 @@ public sealed class AppSettings
 {
     public string Server { get; set; } = "194.31.204.5:9988";
     public int VoicePort { get; set; } = 9987;
-    public bool ForceUdp { get; set; } = false;
     public string Room { get; set; } = "squad";
     public string Nickname { get; set; } = "Player";
     public int MicDevice { get; set; }

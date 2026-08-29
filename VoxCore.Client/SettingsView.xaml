@@ -346,24 +346,6 @@
                     </StackPanel>
                 </Border>
 
-                <!-- SERVER SELECT -->
-                <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"
-                        CornerRadius="14" Padding="16,14">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="СЕРВЕР" FontFamily="Cascadia Code" FontSize="11" Foreground="#7fe3ff" />
-                        <ComboBox x:Name="ServerCombo" MinWidth="300" HorizontalAlignment="Left"
-                                  FontFamily="Cascadia Code" FontSize="12"
-                                  Background="#0a0c18" Foreground="#dbe6ff" BorderBrush="#00e5ff"
-                                  SelectionChanged="ServerCombo_SelectionChanged" />
-                        <TextBlock x:Name="ServerInfo" Text="" FontFamily="Cascadia Code" FontSize="11"
-                                   Foreground="#5a617a" TextWrapping="Wrap" />
-                        <ToggleSwitch x:Name="ForceUdpToggle" OnContent="только UDP" OffContent="WebRTC + UDP"
-                                      FontFamily="Cascadia Code" FontSize="12" />
-                        <TextBlock Text="UDP = низкая латентность (~20ms), без TURN relay" FontFamily="Cascadia Code"
-                                   FontSize="10" Foreground="#5a617a" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
                 <!-- UPDATES -->
                 <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"
                         CornerRadius="14" Padding="16,14">

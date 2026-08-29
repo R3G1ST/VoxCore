@@ -51,23 +51,6 @@ public sealed partial class SettingsView : UserControl
         EqHighText.Text = $"{settings.EqHigh:0} dB";
         LoopbackCheck.IsChecked = false;
 
-        // Server selection
-        var servers = new List<(string Label, string Address, int VoicePort)>
-        {
-            ("🇳🇱 NL сервер (Европа)", "194.31.204.5:9988", 9987),
-            ("🇷🇺 RU сервер (Россия)", "89.169.4.132:9990", 9989),
-        };
-        foreach (var s in servers) ServerCombo.Items.Add(s.Label);
-        var currentServer = settings.Server;
-        ServerCombo.SelectedIndex = servers.FindIndex(s => s.Address == currentServer);
-        if (ServerCombo.SelectedIndex < 0) ServerCombo.SelectedIndex = 0;
-        // Set voice port based on current server
-        var currentIdx = ServerCombo.SelectedIndex;
-        if (currentIdx >= 0 && currentIdx < servers.Count)
-            _settings.VoicePort = servers[currentIdx].VoicePort;
-        ForceUdpToggle.IsOn = settings.ForceUdp;
-        UpdateServerInfo();
-
         VolumeSlider.Value = 80;
         VolumeText.Text = "80%";
         VolumeSlider.ValueChanged += (_, e) =>
@@ -180,7 +163,7 @@ public sealed partial class SettingsView : UserControl
             TurnStatus.Text = $"{_settings?.Server?.Split(':')[0] ?? "?"}:3478";
         }
 
-        int ping = _webrtc?.IsConnected == true ? _webrtc.LastPingMs : (_voice?.LastPingMs ?? -1);
+        int ping = _voice?.LastPingMs ?? -1;
         if (ping < 0)
         {
             PingDot.Fill = Gray();
@@ -206,15 +189,17 @@ public sealed partial class SettingsView : UserControl
             PingStatus.Foreground = Red();
         }
 
-        if (_webrtc?.IsConnected == true)
+        if (_voice?.IsConnected == true)
         {
-            var (t, b, l) = _webrtc!.JitterStats;
-            JitDot.Fill = b <= t + 40 ? Green() : Yellow();
-            JitStatus.Text = $"{t}ms / {b}ms";
+            int jitTarget = _voice.JitterTargetMs;
+            int jitBuffered = _voice.JitterBufferMs;
+            long jitLost = _voice.JitterLostFrames;
+            JitDot.Fill = jitBuffered <= jitTarget + 40 ? Green() : Yellow();
+            JitStatus.Text = $"{jitTarget}ms / {jitBuffered}ms";
             JitStatus.Foreground = Green();
-            LossDot.Fill = l == 0 ? Green() : (l < 10 ? Yellow() : Red());
-            LossStatus.Text = $"{l} кадров";
-            LossStatus.Foreground = l == 0 ? Green() : (l < 10 ? Yellow() : Red());
+            LossDot.Fill = jitLost == 0 ? Green() : (jitLost < 10 ? Yellow() : Red());
+            LossStatus.Text = $"{jitLost} кадров";
+            LossStatus.Foreground = jitLost == 0 ? Green() : (jitLost < 10 ? Yellow() : Red());
         }
         else
         {
@@ -316,14 +301,6 @@ public sealed partial class SettingsView : UserControl
         _settings.EqLow = EqLowSlider.Value;
         _settings.EqMid = EqMidSlider.Value;
         _settings.EqHigh = EqHighSlider.Value;
-        // Save server selection
-        var servers = new List<(string Address, int VoicePort)> { ("194.31.204.5:9988", 9987), ("89.169.4.132:9990", 9989) };
-        if (ServerCombo.SelectedIndex >= 0 && ServerCombo.SelectedIndex < servers.Count)
-        {
-            _settings.Server = servers[ServerCombo.SelectedIndex].Address;
-            _settings.VoicePort = servers[ServerCombo.SelectedIndex].VoicePort;
-        }
-        _settings.ForceUdp = ForceUdpToggle.IsOn;
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;
@@ -344,27 +321,4 @@ public sealed partial class SettingsView : UserControl
         CloseRequested?.Invoke();
     }
 
-    private void ServerCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateServerInfo();
-    }
-
-    private void UpdateServerInfo()
-    {
-        var servers = new List<(string Label, string Address, string Ping)>
-        {
-            ("🇳🇱 NL", "194.31.204.5:9988", "50ms"),
-            ("🇷🇺 RU", "89.169.4.132:9990", "20-40ms"),
-        };
-        var idx = ServerCombo.SelectedIndex;
-        if (idx >= 0 && idx < servers.Count)
-        {
-            ServerInfo.Text = $"API: {servers[idx].Address} • UDP: {(idx == 0 ? "9987" : "9989")} • Пинг: ~{servers[idx].Ping}";
-            ServerInfo.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 94, 100, 126));
-        }
-        else
-        {
-            ServerInfo.Text = "";
-        }
-    }
 }

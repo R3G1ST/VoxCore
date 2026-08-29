@@ -21,7 +21,7 @@ public sealed partial class MainWindow : Window
     private readonly ApiClient _api;
     private readonly AppSettings _settings;
     private readonly VoiceClient _voice = new();
-    private readonly WebRTCVoiceClient? _webrtc;
+    private readonly WebRTCVoiceClient? _webrtc = null; // disabled: UDP-only
     private readonly ObservableCollection<MemberItem> _members = [];
     private readonly ObservableCollection<ChatMessage> _channelMessages = [];
     private readonly ObservableCollection<ChatMessage> _dmMessages = [];
@@ -33,32 +33,12 @@ public sealed partial class MainWindow : Window
     private UserInfo? _currentDmFriend;
     private int _lastChannelMsgId;
     private int _lastDmMsgId;
-    private bool _useWebRtc = true;
-    private string _lastWebRtcError = "";
 
     public MainWindow(ApiClient api, AppSettings settings, UserInfo user)
     {
         _api = api;
         _settings = settings;
         _user = user;
-
-        // Try WebRTC first, fallback to UDP
-        try
-        {
-            var host = _settings.Server.Split(':')[0];
-            _webrtc = new WebRTCVoiceClient(api, host, _settings);
-            _webrtc.AgcEnabled = _settings.AgcEnabled;
-            _webrtc.StatusChanged += (msg) => DispatcherQueue.TryEnqueue(() => StatusText.Text = msg);
-            _webrtc.MembersChanged += (names) => DispatcherQueue.TryEnqueue(() =>
-            {
-                var oldNames = _members.Select(m => m.Name).ToList();
-                var newNames = names.ToList();
-                if (oldNames.SequenceEqual(newNames)) return;
-                _members.Clear();
-                foreach (var n in names) _members.Add(new MemberItem(n));
-            });
-        }
-        catch { _useWebRtc = false; }
 
         InitializeComponent();
         HubView.Init(_members, _user.Name, _voice, _webrtc, _settings, LeaveChannel);
@@ -679,28 +659,24 @@ public sealed partial class MainWindow : Window
     private void MicMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = true;
-        _webrtc.MicMuted = true;
         MicMuteBtn.Content = "🎙️🚫";
     }
 
     private void MicMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.MicMuted = false;
-        _webrtc.MicMuted = false;
         MicMuteBtn.Content = "🎙️";
     }
 
     private void HeadMuteBtn_Checked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = true;
-        _webrtc.PlaybackMuted = true;
         HeadMuteBtn.Content = "🔇";
     }
 
     private void HeadMuteBtn_Unchecked(object sender, RoutedEventArgs e)
     {
         _voice.PlaybackMuted = false;
-        _webrtc.PlaybackMuted = false;
         HeadMuteBtn.Content = "🔊";
     }
 
