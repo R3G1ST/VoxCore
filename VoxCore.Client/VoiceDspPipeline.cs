@@ -30,6 +30,8 @@ public sealed class VoiceDspPipeline : IDisposable
     public double VadThreshold { get => _vadThreshold; set => _vadThreshold = Math.Clamp(value, 0.05, 0.9); }
     public float PreVadGain { get => _preVadGain; set => _preVadGain = Math.Clamp(value, 0.5f, 10f); }
 
+    public void SetAttenuationLimit(double attLimDb) => _dfn?.SetAttenuationLimit(attLimDb);
+
     public event Action<bool>? VadStateChanged;
 
     public VoiceDspPipeline(int sampleRate, int frameSize, bool noiseSuppression, double dfAttLim, AppSettings settings)

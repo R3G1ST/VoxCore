@@ -21,6 +21,7 @@ public sealed class DeepFilterNet : IDisposable
 
     public int HopSize { get; } = 480;
     public bool IsLoaded => _handle != 0;
+    public void SetAttenuationLimit(double attLimDb) => _ctrlPorts[0] = (float)attLimDb;
 
     /// <param name="attLimitDb">Порт 0: предел подавления, dB (60 = агрессивнее стокового 50)</param>
     public DeepFilterNet(string dllPath, int sampleRate = 48000, double attLimitDb = 60.0)

@@ -83,6 +83,13 @@ public sealed class VoiceClient : IDisposable
         set => _noiseSuppression = value;
     }
 
+    public void SetNoiseSuppressionLevel(int level)
+    {
+        double attLim = level switch { 1 => 15.0, 2 => 30.0, 3 => 60.0, _ => 0.0 };
+        _noiseSuppression = level > 0;
+        _dsp?.SetAttenuationLimit(attLim);
+    }
+
     public void Connect(string server, int port, string room, string name, string password, AppSettings? settings = null)
     {
         _room = room;

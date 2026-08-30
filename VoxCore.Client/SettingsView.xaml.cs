@@ -58,7 +58,11 @@ public sealed partial class SettingsView : UserControl
             _voice.Volume = (int)e.NewValue;
         };
 
-        NsLevelSlider.ValueChanged += (_, e) => UpdateNsLevelText((int)e.NewValue);
+        NsLevelSlider.ValueChanged += (_, e) =>
+        {
+            UpdateNsLevelText((int)e.NewValue);
+            _voice?.SetNoiseSuppressionLevel((int)e.NewValue);
+        };
         EqLowSlider.ValueChanged += (_, e) => { EqLowText.Text = $"{e.NewValue:0} dB"; };
         EqMidSlider.ValueChanged += (_, e) => { EqMidText.Text = $"{e.NewValue:0} dB"; };
         EqHighSlider.ValueChanged += (_, e) => { EqHighText.Text = $"{e.NewValue:0} dB"; };
