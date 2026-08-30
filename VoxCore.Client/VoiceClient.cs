@@ -88,7 +88,7 @@ public sealed class VoiceClient : IDisposable
         _room = room;
         _name = name;
         _dsp?.Dispose();
-        _dsp = new VoiceDspPipeline(SampleRate, FrameSize, _noiseSuppression, 60.0, settings!);
+        _dsp = new VoiceDspPipeline(SampleRate, FrameSize, _noiseSuppression, 30.0, settings!);
         Log($"VoiceClient: DSP pipeline loaded (DFN3={_dsp.IsDfnLoaded})");
         _gcm?.Dispose();
         _gcm = string.IsNullOrEmpty(password)
