@@ -92,35 +92,35 @@ public sealed partial class SettingsView : UserControl
 
         var udpConnected = _voice.IsConnected;
 
+        // UDP-only pipeline: HPF → Opus → UDP
         HpfDot.Fill = Green();
         HpfStatus.Text = "активен";
         HpfStatus.Foreground = Green();
 
-        AecDot.Fill = Gray();
-        AecStatus.Text = "не используется";
-        AecStatus.Foreground = Gray();
-
         OpusStatus.Text = "48 kbps (FEC)";
-
-        var nsOn = NsToggle.IsOn;
-        RnnoiseDot.Fill = nsOn ? Green() : Red();
-        RnnoiseStatus.Text = nsOn ? "активно" : "выключено";
-        RnnoiseStatus.Foreground = nsOn ? Green() : Red();
-
-        var dfLoaded = _voice.IsConnected; // DFN loaded when connected
-        DfDot.Fill = dfLoaded ? Green() : Gray();
-        DfStatus.Text = dfLoaded ? "активен" : "не активен";
-        DfStatus.Foreground = dfLoaded ? Green() : Gray();
-
-        AgcDot.Fill = AgcToggle.IsOn ? Green() : Gray();
-        AgcStatus.Text = AgcToggle.IsOn ? "активен" : "выключено";
-        AgcStatus.Foreground = AgcToggle.IsOn ? Green() : Gray();
 
         FecDot.Fill = Green();
         FecStatus.Text = "FEC 15%";
         FecStatus.Foreground = Green();
 
-        // VAD (energy-based)
+        // Not used in UDP-only mode
+        AecDot.Fill = Gray();
+        AecStatus.Text = "не используется";
+        AecStatus.Foreground = Gray();
+
+        RnnoiseDot.Fill = Gray();
+        RnnoiseStatus.Text = "выключено";
+        RnnoiseStatus.Foreground = Gray();
+
+        DfDot.Fill = Gray();
+        DfStatus.Text = "не загружен";
+        DfStatus.Foreground = Gray();
+
+        AgcDot.Fill = Gray();
+        AgcStatus.Text = "выключено";
+        AgcStatus.Foreground = Gray();
+
+        // Energy VAD (from VoiceClient)
         if (udpConnected)
         {
             double p = _voice.VadProb;
@@ -158,9 +158,9 @@ public sealed partial class SettingsView : UserControl
             ConnProtocol.Text = "не подключен";
             ConnProtocol.Foreground = Gray();
             IceDot.Fill = Gray();
-            IceStatus.Text = "—";
+            IceStatus.Text = "не используется";
             TurnDot.Fill = Gray();
-            TurnStatus.Text = $"{_settings?.Server?.Split(':')[0] ?? "?"}:3478";
+            TurnStatus.Text = "не используется";
         }
 
         int ping = _voice?.LastPingMs ?? -1;
@@ -189,25 +189,12 @@ public sealed partial class SettingsView : UserControl
             PingStatus.Foreground = Red();
         }
 
-        if (_voice?.IsConnected == true)
-        {
-            int jitTarget = _voice.JitterTargetMs;
-            int jitBuffered = _voice.JitterBufferMs;
-            long jitLost = _voice.JitterLostFrames;
-            JitDot.Fill = jitBuffered <= jitTarget + 40 ? Green() : Yellow();
-            JitStatus.Text = $"{jitTarget}ms / {jitBuffered}ms";
-            JitStatus.Foreground = Green();
-            LossDot.Fill = jitLost == 0 ? Green() : (jitLost < 10 ? Yellow() : Red());
-            LossStatus.Text = $"{jitLost} кадров";
-            LossStatus.Foreground = jitLost == 0 ? Green() : (jitLost < 10 ? Yellow() : Red());
-        }
-        else
-        {
-            JitDot.Fill = Gray();
-            JitStatus.Text = "—";
-            LossDot.Fill = Gray();
-            LossStatus.Text = "—";
-        }
+        JitDot.Fill = Gray();
+        JitStatus.Text = "—";
+        JitStatus.Foreground = Gray();
+        LossDot.Fill = Gray();
+        LossStatus.Text = "—";
+        LossStatus.Foreground = Gray();
     }
 
     private async void CheckUpdateBtn_Click(object sender, RoutedEventArgs e)
@@ -304,12 +291,6 @@ public sealed partial class SettingsView : UserControl
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
         _voice.NoiseSuppression = NsToggle.IsOn;
-        if (_webrtc is not null)
-        {
-            _webrtc.NoiseSuppression = NsToggle.IsOn;
-            _webrtc.AgcEnabled = AgcToggle.IsOn;
-            _webrtc.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value);
-        }
         _settings.Save();
         UpdateVoiceStatus();
         CloseRequested?.Invoke();

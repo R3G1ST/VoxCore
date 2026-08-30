@@ -86,12 +86,11 @@ class Program
         udp.Client.ReceiveTimeout = 5000;
 
         // Opus encoder/decoder
-        var encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
+        var encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_RESTRICTED_LOWDELAY);
         encoder.Bitrate = 48000;
         encoder.Complexity = 5;
         encoder.UseDTX = false;
-        encoder.UseInbandFEC = true;
-        encoder.PacketLossPercent = 10;
+        encoder.UseInbandFEC = false;
 
         var decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
 
@@ -99,7 +98,7 @@ class Program
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
         var playbackBuffer = new BufferedWaveProvider(waveFormat)
         {
-            BufferDuration = TimeSpan.FromMilliseconds(200),
+            BufferDuration = TimeSpan.FromMilliseconds(400),
             DiscardOnBufferOverflow = true
         };
         var playback = new WaveOutEvent();
@@ -109,15 +108,41 @@ class Program
 
         Console.WriteLine($"Connecting to {server}:{port}...");
 
+        var sendLock = new object();
+
         // Send join
-        SendJoin(udp, channel, name);
+        SendJoin(udp, channel, name, sendLock);
         Console.WriteLine($"Joined channel \"{channel}\"");
+
+        // Heartbeat sender — keep alive in server room
+        _ = Task.Run(async () =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            long nextBeat = 5000;
+            while (!ct.IsCancellationRequested)
+            {
+                long now = sw.ElapsedMilliseconds;
+                if (now < nextBeat)
+                {
+                    int sleep = (int)(nextBeat - now);
+                    if (sleep > 0)
+                        await Task.Delay(sleep, ct).ConfigureAwait(false);
+                }
+                try
+                {
+                    SendHeartbeat(udp, channel, sendLock);
+                    nextBeat += 5000;
+                    if (nextBeat < sw.ElapsedMilliseconds - 5000)
+                        nextBeat = sw.ElapsedMilliseconds + 5000;
+                }
+                catch { break; }
+            }
+        }, ct);
 
         if (mode == "tone")
         {
             Console.WriteLine("Sending 1kHz test tone... (Ctrl+C to stop)");
-            // Start tone sender
-            _ = Task.Run(() => ToneSender(udp, encoder, channel, name, ct), ct);
+            _ = Task.Run(() => ToneSender(udp, encoder, channel, name, sendLock, ct), ct);
         }
         else if (mode == "echo")
         {
@@ -132,6 +157,7 @@ class Program
         var recvBuf = new byte[8192];
         var pcmBuf = new short[FrameSize];
         var outBytes = new byte[FrameBytes];
+        var opusBuf = new byte[4000];
         long recvCount = 0;
 
         while (!ct.IsCancellationRequested)
@@ -155,9 +181,9 @@ class Program
                         int n = decoder.Decode(raw.AsSpan(), pcmBuf.AsSpan(), FrameSize, false);
                         recvCount++;
 
-                        if (mode == "listen" || mode == "echo")
+                        if (mode == "listen" && n > 0)
                         {
-                            // Play received audio
+                            // Listen mode only: play received audio
                             for (int i = 0; i < n; i++)
                             {
                                 outBytes[i * 2] = (byte)(pcmBuf[i] & 0xFF);
@@ -171,10 +197,10 @@ class Program
 
                         if (mode == "echo" && n > 0)
                         {
-                            // Echo: encode and send back
-                            int encN = encoder.Encode(pcmBuf.AsSpan(), n, outBytes.AsSpan(), outBytes.Length);
+                            // Echo: encode and send back (do NOT play locally — causes feedback)
+                            int encN = encoder.Encode(pcmBuf.AsSpan(), n, opusBuf.AsSpan(), opusBuf.Length);
                             if (encN > 0)
-                                SendAudio(udp, encoder, outBytes, encN, channel, name);
+                                SendAudio(udp, encoder, opusBuf, encN, channel, name, sendLock);
                         }
                         break;
 
@@ -192,24 +218,33 @@ class Program
         }
 
         // Send leave
-        SendLeave(udp, channel);
+        SendLeave(udp, channel, sendLock);
         Console.WriteLine("Left channel.");
         playback.Stop();
         playback.Dispose();
         udp.Close();
     }
 
-    static async Task ToneSender(UdpClient udp, IOpusEncoder encoder, string channel, string name, CancellationToken ct)
+    static async Task ToneSender(UdpClient udp, IOpusEncoder encoder, string channel, string name, object sendLock, CancellationToken ct)
     {
         var pcmFrame = new short[FrameSize];
         var opusBuf = new byte[4000];
         double phase = 0;
         double freq = 1000; // 1kHz
         double amplitude = 0.5;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        long nextFrameMs = 0;
 
         while (!ct.IsCancellationRequested)
         {
-            // Generate 20ms of 1kHz sine wave
+            long now = sw.ElapsedMilliseconds;
+            if (now < nextFrameMs)
+            {
+                int sleep = (int)(nextFrameMs - now);
+                if (sleep > 0)
+                    await Task.Delay(sleep, ct).ConfigureAwait(false);
+            }
+
             for (int i = 0; i < FrameSize; i++)
             {
                 pcmFrame[i] = (short)(amplitude * 32767 * Math.Sin(2 * Math.PI * freq * phase));
@@ -219,13 +254,25 @@ class Program
 
             int n = encoder.Encode(pcmFrame.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
             if (n > 0)
-                SendAudio(udp, encoder, opusBuf, n, channel, name);
+                SendAudio(udp, encoder, opusBuf, n, channel, name, sendLock);
 
-            await Task.Delay(20, ct); // 20ms frame
+            nextFrameMs += 20;
+            if (nextFrameMs < sw.ElapsedMilliseconds - 100)
+                nextFrameMs = sw.ElapsedMilliseconds;
         }
     }
 
-    static void SendJoin(UdpClient udp, string room, string name)
+    static void SendHeartbeat(UdpClient udp, string room, object sendLock)
+    {
+        var roomBytes = Encoding.UTF8.GetBytes(room);
+        var packet = new byte[2 + roomBytes.Length];
+        packet[0] = 0x04;
+        packet[1] = (byte)roomBytes.Length;
+        roomBytes.CopyTo(packet, 2);
+        lock (sendLock) { try { udp.Send(packet, packet.Length); } catch { } }
+    }
+
+    static void SendJoin(UdpClient udp, string room, string name, object sendLock)
     {
         var roomBytes = Encoding.UTF8.GetBytes(room);
         var nameBytes = Encoding.UTF8.GetBytes(name);
@@ -235,20 +282,20 @@ class Program
         roomBytes.CopyTo(packet, 2);
         packet[2 + roomBytes.Length] = (byte)nameBytes.Length;
         nameBytes.CopyTo(packet, 3 + roomBytes.Length);
-        udp.Send(packet, packet.Length);
+        lock (sendLock) { udp.Send(packet, packet.Length); }
     }
 
-    static void SendLeave(UdpClient udp, string room)
+    static void SendLeave(UdpClient udp, string room, object sendLock)
     {
         var roomBytes = Encoding.UTF8.GetBytes(room);
         var packet = new byte[2 + roomBytes.Length];
         packet[0] = 0x02;
         packet[1] = (byte)roomBytes.Length;
         roomBytes.CopyTo(packet, 2);
-        try { udp.Send(packet, packet.Length); } catch { }
+        lock (sendLock) { try { udp.Send(packet, packet.Length); } catch { } }
     }
 
-    static void SendAudio(UdpClient udp, IOpusEncoder encoder, byte[] opus, int len, string room, string name)
+    static void SendAudio(UdpClient udp, IOpusEncoder encoder, byte[] opus, int len, string room, string name, object sendLock)
     {
         var roomBytes = Encoding.UTF8.GetBytes(room);
         var nameBytes = Encoding.UTF8.GetBytes(name);
@@ -259,7 +306,7 @@ class Program
         packet[2 + roomBytes.Length] = (byte)nameBytes.Length;
         nameBytes.CopyTo(packet, 3 + roomBytes.Length);
         Array.Copy(opus, 0, packet, 3 + roomBytes.Length + nameBytes.Length, len);
-        try { udp.Send(packet, packet.Length); } catch { }
+        lock (sendLock) { try { udp.Send(packet, packet.Length); } catch { } }
     }
 
     static List<string> ParseMembers(byte[] data)

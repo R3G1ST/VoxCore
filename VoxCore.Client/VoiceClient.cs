@@ -7,13 +7,13 @@ using Concentus;
 using Concentus.Enums;
 using Concentus.Structs;
 using NAudio.Wave;
+using VoxCore.Client.Dsp;
 
 namespace VoxCore.Client;
 
 /// <summary>
-/// Phase 1: Golyy UDP kak TeamSpeak.
-/// Mic → Opus → UDP → Server → UDP → Opus → Speaker.
-/// Bez DSP, bez jitter buffer, bez pre-roll.
+/// Phase 1+2: UDP kak TeamSpeak + HPF.
+/// Mic → HPF → Opus → UDP → Server → UDP → Opus → Speaker.
 /// </summary>
 public sealed class VoiceClient : IDisposable
 {
@@ -29,7 +29,7 @@ public sealed class VoiceClient : IDisposable
     private UdpClient? _udp;
     private WaveInEvent? _capture;
     private WaveOutEvent? _playback;
-    private BufferedWaveProvider? _playbackBuffer;
+    private AdaptiveJitterBuffer? _playbackBuffer;
     private IOpusEncoder? _encoder;
     private IOpusDecoder? _decoder;
     private Thread? _encodeThread;
@@ -44,6 +44,7 @@ public sealed class VoiceClient : IDisposable
     private AesGcm? _gcm;
     private long _nonceCounter;
     private readonly byte[] _sessionId = RandomNumberGenerator.GetBytes(4);
+    private VoiceDspPipeline? _dsp;
 
     public event Action<IReadOnlyList<string>>? MembersChanged;
     public event Action<bool>? TalkingChanged;
@@ -86,6 +87,9 @@ public sealed class VoiceClient : IDisposable
     {
         _room = room;
         _name = name;
+        _dsp?.Dispose();
+        _dsp = new VoiceDspPipeline(SampleRate, FrameSize, _noiseSuppression, 60.0, settings!);
+        Log($"VoiceClient: DSP pipeline loaded (DFN3={_dsp.IsDfnLoaded})");
         _gcm?.Dispose();
         _gcm = string.IsNullOrEmpty(password)
             ? null
@@ -94,6 +98,8 @@ public sealed class VoiceClient : IDisposable
         _udp = new UdpClient(server, port);
         _udp.Client.SendTimeout = 1000;
         _udp.Client.ReceiveTimeout = 5000;
+        _udp.Client.ReceiveBufferSize = 1024 * 1024;
+        _udp.Client.SendBufferSize = 1024 * 1024;
 
         // Opus: VoIP, 48kbps, FEC
         _encoder = OpusCodecFactory.CreateEncoder(SampleRate, Channels, OpusApplication.OPUS_APPLICATION_VOIP);
@@ -106,15 +112,11 @@ public sealed class VoiceClient : IDisposable
         _decoder = OpusCodecFactory.CreateDecoder(SampleRate, Channels);
 
         var waveFormat = new WaveFormat(SampleRate, 16, Channels);
-        _playbackBuffer = new BufferedWaveProvider(waveFormat)
-        {
-            BufferDuration = TimeSpan.FromMilliseconds(200),
-            DiscardOnBufferOverflow = true
-        };
+        _playbackBuffer = new AdaptiveJitterBuffer(waveFormat, targetMs: 80, maxMs: 500);
         _playback = new WaveOutEvent();
         _playback.Init(_playbackBuffer);
         _playback.Volume = Math.Clamp(_volume / 100f, 0f, 1f);
-        _playback.Play();
+        Log("VoiceClient: playback ready, waiting for prebuffer...");
 
         _capture = new WaveInEvent
         {
@@ -163,6 +165,7 @@ public sealed class VoiceClient : IDisposable
         _capture?.Dispose();
         _playback?.Stop();
         _playback?.Dispose();
+        _dsp?.Dispose();
         _udp?.Close();
         StatusChanged?.Invoke("отключено");
     }
@@ -204,13 +207,21 @@ public sealed class VoiceClient : IDisposable
 
                     if (talk && _encoder is not null)
                     {
-                        // Prostaya gain korektsiya
                         if (MicGain != 1.0)
                         {
                             var g = (float)MicGain;
                             for (int i = 0; i < FrameSize; i++)
                                 frameShorts[i] = (short)Math.Clamp((int)(frameShorts[i] * g), short.MinValue, short.MaxValue);
                         }
+
+                        for (int i = 0; i < FrameSize; i++)
+                            frameFloat[i] = frameShorts[i] / 32768f;
+
+                        if (_dsp != null)
+                            _dsp.Process(frameFloat);
+
+                        for (int i = 0; i < FrameSize; i++)
+                            frameShorts[i] = (short)Math.Clamp((int)(frameFloat[i] * 32768f), short.MinValue, short.MaxValue);
 
                         int n = _encoder.Encode(frameShorts.AsSpan(), FrameSize, opusBuf.AsSpan(), opusBuf.Length);
                         if (n > 0) SendAudio(opusBuf, n);
@@ -266,6 +277,10 @@ public sealed class VoiceClient : IDisposable
         var pcmBuf = new short[FrameSize];
         var outBytes = new byte[FrameBytes];
         var recvBuf = new byte[8192];
+        long audioCount = 0;
+        long lastLogMs = 0;
+        long lastArrivalMs = 0;
+        bool playbackStarted = false;
         while (!token.IsCancellationRequested)
         {
             try
@@ -274,6 +289,7 @@ public sealed class VoiceClient : IDisposable
                 int received = _udp.Client.Receive(recvBuf);
                 if (received < 2) continue;
                 var data = recvBuf.AsSpan(0, received).ToArray();
+                long nowMs = Environment.TickCount64;
 
                 switch (data[0])
                 {
@@ -285,6 +301,17 @@ public sealed class VoiceClient : IDisposable
                         var speaker = Encoding.UTF8.GetString(data, 3 + roomLen, nameLen);
                         var raw = data.AsSpan(3 + roomLen + nameLen).ToArray();
                         if (raw.Length == 0) continue;
+
+                        audioCount++;
+                        long gap = lastArrivalMs > 0 ? nowMs - lastArrivalMs : 0;
+                        lastArrivalMs = nowMs;
+                        if (nowMs - lastLogMs > 5000)
+                        {
+                            int buffered = _playbackBuffer.BufferedBytes;
+                            Log($"[audio] recv={audioCount} gap={gap}ms buffered={buffered}B ({buffered * 1000 / (SampleRate * 2)}ms)");
+                            lastLogMs = nowMs;
+                        }
+
                         byte[] payload;
                         if (_gcm is not null)
                         {
@@ -311,6 +338,13 @@ public sealed class VoiceClient : IDisposable
                         }
                         if (!PlaybackMuted)
                             _playbackBuffer.AddSamples(outBytes, 0, n * 2);
+
+                        if (!playbackStarted && _playbackBuffer.BufferedBytes >= _playbackBuffer.WaveFormat.SampleRate * _playbackBuffer.WaveFormat.BitsPerSample / 8 / 2)
+                        {
+                            _playback?.Play();
+                            playbackStarted = true;
+                            Log("[audio] playback started (prebuffered 200ms)");
+                        }
                         break;
 
                     case 0x06: // members
