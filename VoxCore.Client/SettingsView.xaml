@@ -254,27 +254,23 @@
                 </StackPanel>
 
                 <StackPanel Spacing="8">
-                    <TextBlock Text="ШУМОПОДАВЛЕНИЕ (RNNoise)" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
-                    <ToggleSwitch x:Name="NsToggle" OnContent="вкл" OffContent="выкл" />
-                </StackPanel>
-
-                <StackPanel Spacing="8">
-                    <TextBlock Text="AGC АВТОКОМПРЕССИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
-                    <ToggleSwitch x:Name="AgcToggle" OnContent="вкл" OffContent="выкл" />
-                </StackPanel>
-
-                <StackPanel Spacing="8">
-                    <TextBlock Text="DEEPFILTER ПРЕДЕЛ ПОДАВЛЕНИЯ (после переподключения)" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
+                    <TextBlock Text="ШУМОПОДАВЛЕНИЕ DeepFilterNet3" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Slider x:Name="DfAttSlider" Minimum="6" Maximum="60" StepFrequency="2" />
-                        <TextBlock x:Name="DfAttText" Grid.Column="1" MinWidth="52" Text="60 dB"
+                        <Slider x:Name="NsLevelSlider" Minimum="0" Maximum="3" StepFrequency="1" />
+                        <TextBlock x:Name="NsLevelText" Grid.Column="1" MinWidth="80" Text="среднее"
                                    FontFamily="Cascadia Code" FontSize="12" Foreground="#9fefff"
                                    VerticalAlignment="Center" HorizontalAlignment="Right" />
                     </Grid>
+                    <TextBlock FontFamily="Cascadia Code" FontSize="10" Foreground="#5a617a" TextWrapping="Wrap">0=выкл · 1=мягкое · 2=среднее · 3=сильное (после переподключения)</TextBlock>
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="AGC АВТОКОМПРЕССИЯ" FontFamily="Cascadia Code" FontSize="11" Foreground="#5a617a" />
+                    <ToggleSwitch x:Name="AgcToggle" OnContent="вкл" OffContent="выкл" />
                 </StackPanel>
 
                 <Border Background="#d90d0f1e" BorderBrush="{StaticResource NeonStroke}" BorderThickness="2"

@@ -13,8 +13,9 @@ public sealed class AppSettings
     public double MicGain { get; set; } = 100.0;
     public bool OpenMic { get; set; }
     public bool NoiseSuppression { get; set; } = true;
+    public int NoiseSuppressionLevel { get; set; } = 2; // 0=off, 1=light, 2=medium, 3=strong
     public bool AgcEnabled { get; set; } = true;
-    public double DfAttLim { get; set; } = 60.0;
+    public double DfAttLim { get; set; } = 30.0;
     public double VadThreshold { get; set; } = 0.1;
     public float PreVadGain { get; set; } = 3.0f;
     public double EqLow { get; set; }

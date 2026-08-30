@@ -39,10 +39,9 @@ public sealed partial class SettingsView : UserControl
 
         GainSlider.Value = settings.MicGain;
         GainText.Text = $"{settings.MicGain:0}%";
-        NsToggle.IsOn = settings.NoiseSuppression;
+        NsLevelSlider.Value = settings.NoiseSuppressionLevel;
+        UpdateNsLevelText(settings.NoiseSuppressionLevel);
         AgcToggle.IsOn = settings.AgcEnabled;
-        DfAttSlider.Value = settings.DfAttLim;
-        DfAttText.Text = $"{settings.DfAttLim:0} dB";
         EqLowSlider.Value = settings.EqLow;
         EqMidSlider.Value = settings.EqMid;
         EqHighSlider.Value = settings.EqHigh;
@@ -59,7 +58,7 @@ public sealed partial class SettingsView : UserControl
             _voice.Volume = (int)e.NewValue;
         };
 
-        DfAttSlider.ValueChanged += (_, e) => DfAttText.Text = $"{e.NewValue:0} dB";
+        NsLevelSlider.ValueChanged += (_, e) => UpdateNsLevelText((int)e.NewValue);
         EqLowSlider.ValueChanged += (_, e) => { EqLowText.Text = $"{e.NewValue:0} dB"; };
         EqMidSlider.ValueChanged += (_, e) => { EqMidText.Text = $"{e.NewValue:0} dB"; };
         EqHighSlider.ValueChanged += (_, e) => { EqHighText.Text = $"{e.NewValue:0} dB"; };
@@ -282,18 +281,24 @@ public sealed partial class SettingsView : UserControl
         StopTest();
         _settings.MicDevice = MicCombo.SelectedIndex;
         _settings.MicGain = GainSlider.Value;
-        _settings.NoiseSuppression = NsToggle.IsOn;
+        int nsLevel = (int)NsLevelSlider.Value;
+        _settings.NoiseSuppressionLevel = nsLevel;
+        _settings.NoiseSuppression = nsLevel > 0;
         _settings.AgcEnabled = AgcToggle.IsOn;
-        _settings.DfAttLim = DfAttSlider.Value;
         _settings.EqLow = EqLowSlider.Value;
         _settings.EqMid = EqMidSlider.Value;
         _settings.EqHigh = EqHighSlider.Value;
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
-        _voice.NoiseSuppression = NsToggle.IsOn;
+        _voice.NoiseSuppression = nsLevel > 0;
         _settings.Save();
         UpdateVoiceStatus();
         CloseRequested?.Invoke();
+    }
+
+    private void UpdateNsLevelText(int level)
+    {
+        NsLevelText.Text = level switch { 0 => "выкл", 1 => "мягкое", 2 => "среднее", 3 => "сильное", _ => "?" };
     }
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e)

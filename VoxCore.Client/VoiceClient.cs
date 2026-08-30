@@ -88,8 +88,12 @@ public sealed class VoiceClient : IDisposable
         _room = room;
         _name = name;
         _dsp?.Dispose();
-        _dsp = new VoiceDspPipeline(SampleRate, FrameSize, _noiseSuppression, 30.0, settings!);
-        Log($"VoiceClient: DSP pipeline loaded (DFN3={_dsp.IsDfnLoaded})");
+        int nsLevel = settings?.NoiseSuppressionLevel ?? 2;
+        double attLim = nsLevel switch { 1 => 15.0, 2 => 30.0, 3 => 60.0, _ => 0.0 };
+        bool nsEnabled = nsLevel > 0;
+        _noiseSuppression = nsEnabled;
+        _dsp = new VoiceDspPipeline(SampleRate, FrameSize, nsEnabled, attLim, settings!);
+        Log($"VoiceClient: DSP pipeline loaded (DFN3={_dsp.IsDfnLoaded}, level={nsLevel}, attLim={attLim}dB)");
         _gcm?.Dispose();
         _gcm = string.IsNullOrEmpty(password)
             ? null
