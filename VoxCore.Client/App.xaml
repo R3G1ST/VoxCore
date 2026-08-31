@@ -7,53 +7,79 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
-            <SolidColorBrush x:Key="BgBrush" Color="#030306" />
-            <SolidColorBrush x:Key="CardBrush" Color="#08080e" />
-            <SolidColorBrush x:Key="BorderBrush" Color="#181820" />
+
+            <!-- ═══ Cyber Dark Palette ═══ -->
+            <SolidColorBrush x:Key="BgBrush" Color="#0a0a12" />
+            <SolidColorBrush x:Key="BgDeepBrush" Color="#06060c" />
+            <SolidColorBrush x:Key="CardBrush" Color="#10101c" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#16162a" />
+            <SolidColorBrush x:Key="BorderBrush" Color="#1a1a30" />
+            <SolidColorBrush x:Key="BorderGlowBrush" Color="#00ff8830" />
             <SolidColorBrush x:Key="AccentBrush" Color="#00ff88" />
-            <SolidColorBrush x:Key="AccentCyanBrush" Color="#00e5ff" />
-            <SolidColorBrush x:Key="AccentMagentaBrush" Color="#ff2ec4" />
-            <SolidColorBrush x:Key="DimBrush" Color="#5a5a6a" />
-            <SolidColorBrush x:Key="TextBrush" Color="#e8e8f0" />
+            <SolidColorBrush x:Key="AccentDimBrush" Color="#00cc6a" />
+            <SolidColorBrush x:Key="AccentGlowBrush" Color="#00ff8820" />
+            <SolidColorBrush x:Key="CyanBrush" Color="#00e5ff" />
+            <SolidColorBrush x:Key="CyanDimBrush" Color="#0099aa" />
+            <SolidColorBrush x:Key="PurpleBrush" Color="#a855f7" />
+            <SolidColorBrush x:Key="DangerBrush" Color="#ff3b5c" />
+            <SolidColorBrush x:Key="WarningBrush" Color="#f0a030" />
+            <SolidColorBrush x:Key="DimBrush" Color="#4a4a6a" />
+            <SolidColorBrush x:Key="MutedBrush" Color="#6a6a8a" />
+            <SolidColorBrush x:Key="TextBrush" Color="#e0e0f0" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#9090b0" />
             <SolidColorBrush x:Key="UserColorBrush" Color="#5865f2" />
+            <SolidColorBrush x:Key="InputBrush" Color="#0e0e1a" />
+            <SolidColorBrush x:Key="InputBorderBrush" Color="#2a2a44" />
+
+            <!-- ═══ VcButton — основная кнопка ═══ -->
             <Style x:Key="VcButton" TargetType="Button">
-                <Setter Property="Background" Value="#08080e" />
-                <Setter Property="Foreground" Value="#e8e8f0" />
-                <Setter Property="BorderBrush" Value="#181820" />
+                <Setter Property="Background" Value="#10101c" />
+                <Setter Property="Foreground" Value="#e0e0f0" />
+                <Setter Property="BorderBrush" Value="#1a1a30" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
+                <Setter Property="FontSize" Value="12" />
                 <Setter Property="Padding" Value="16,8" />
                 <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
             </Style>
+
+            <!-- ═══ VcTextBox — текстовое поле ═══ -->
             <Style x:Key="VcTextBox" TargetType="TextBox">
-                <Setter Property="Background" Value="#08080e" />
-                <Setter Property="Foreground" Value="#e8e8f0" />
-                <Setter Property="BorderBrush" Value="#181820" />
+                <Setter Property="Background" Value="#0e0e1a" />
+                <Setter Property="Foreground" Value="#e0e0f0" />
+                <Setter Property="BorderBrush" Value="#2a2a44" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
-                <Setter Property="Padding" Value="10,6" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Padding" Value="10,8" />
             </Style>
+
+            <!-- ═══ VcLabel — подпись ═══ -->
             <Style x:Key="VcLabel" TargetType="TextBlock">
-                <Setter Property="Foreground" Value="#5a5a6a" />
+                <Setter Property="Foreground" Value="#6a6a8a" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
                 <Setter Property="FontSize" Value="11" />
             </Style>
+
+            <!-- ═══ VcTabButton — вкладка ═══ -->
             <Style x:Key="VcTabButton" TargetType="Button">
-                <Setter Property="Background" Value="#08080e" />
-                <Setter Property="Foreground" Value="#e8e8f0" />
-                <Setter Property="BorderBrush" Value="#181820" />
-                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="#6a6a8a" />
+                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
                 <Setter Property="FontSize" Value="11" />
                 <Setter Property="Padding" Value="14,6" />
             </Style>
+
+            <!-- ═══ VcSmallButton — маленькая кнопка ═══ -->
             <Style x:Key="VcSmallButton" TargetType="Button">
-                <Setter Property="Background" Value="#0d0f1e" />
-                <Setter Property="Foreground" Value="#9fefff" />
-                <Setter Property="BorderBrush" Value="#00e5ff" />
+                <Setter Property="Background" Value="#0e0e1a" />
+                <Setter Property="Foreground" Value="#00e5ff" />
+                <Setter Property="BorderBrush" Value="#00e5ff40" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
@@ -61,43 +87,96 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Padding" Value="12,6" />
             </Style>
-            <Style x:Key="AuthTextBox" TargetType="TextBox">
-                <Setter Property="Background" Value="#1e1f22" />
-                <Setter Property="Foreground" Value="#dbdee1" />
-                <Setter Property="BorderBrush" Value="#3f4248" />
+
+            <!-- ═══ NeonBtn — неоновая кнопка с glow ═══ -->
+            <Style x:Key="NeonBtn" TargetType="Button">
+                <Setter Property="Background" Value="#00ff8815" />
+                <Setter Property="Foreground" Value="#00ff88" />
+                <Setter Property="BorderBrush" Value="#00ff8850" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="FontFamily" Value="Cascadia Code" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,8" />
+            </Style>
+
+            <!-- ═══ DangerBtn — красная кнопка ═══ -->
+            <Style x:Key="DangerBtn" TargetType="Button">
+                <Setter Property="Background" Value="#ff3b5c15" />
+                <Setter Property="Foreground" Value="#ff5c78" />
+                <Setter Property="BorderBrush" Value="#ff3b5c50" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="FontFamily" Value="Cascadia Code" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,8" />
+            </Style>
+
+            <!-- ═══ CyberCard — карточка с border glow ═══ -->
+            <Style x:Key="CyberCard" TargetType="Border">
+                <Setter Property="Background" Value="#10101c" />
+                <Setter Property="BorderBrush" Value="#1a1a30" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Padding" Value="16" />
+            </Style>
+
+            <!-- ═══ CyberHeader — заголовок секции ═══ -->
+            <Style x:Key="CyberHeader" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="#00ff88" />
+                <Setter Property="FontFamily" Value="Cascadia Code" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="CharacterSpacing" Value="80" />
+            </Style>
+
+            <!-- ═══ Auth styles ═══ -->
+            <Style x:Key="AuthTextBox" TargetType="TextBox">
+                <Setter Property="Background" Value="#0e0e1a" />
+                <Setter Property="Foreground" Value="#e0e0f0" />
+                <Setter Property="BorderBrush" Value="#2a2a44" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Padding" Value="12,10" />
             </Style>
             <Style x:Key="AuthPassBox" TargetType="PasswordBox">
-                <Setter Property="Background" Value="#1e1f22" />
-                <Setter Property="Foreground" Value="#dbdee1" />
-                <Setter Property="BorderBrush" Value="#3f4248" />
+                <Setter Property="Background" Value="#0e0e1a" />
+                <Setter Property="Foreground" Value="#e0e0f0" />
+                <Setter Property="BorderBrush" Value="#2a2a44" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Padding" Value="12,10" />
             </Style>
             <Style x:Key="AuthButton" TargetType="Button">
-                <Setter Property="Background" Value="#5865f2" />
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Background" Value="#00ff88" />
+                <Setter Property="Foreground" Value="#0a0a12" />
                 <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
                 <Setter Property="FontSize" Value="13" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Padding" Value="12,10" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="Padding" Value="14,10" />
             </Style>
             <Style x:Key="AuthLinkButton" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="#00a8fc" />
+                <Setter Property="Foreground" Value="#00e5ff" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="FontFamily" Value="Cascadia Code" />
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="Padding" Value="0" />
+            </Style>
+
+            <!-- ═══ NeonStroke — border для панелей ═══ -->
+            <Style x:Key="NeonStroke" TargetType="Border">
+                <Setter Property="BorderBrush" Value="#00ff8830" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="12" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>
