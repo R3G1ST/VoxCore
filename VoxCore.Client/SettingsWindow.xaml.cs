@@ -31,10 +31,9 @@ public sealed partial class SettingsWindow : Window
 
         GainSlider.Value = settings.MicGain;
         GainText.Text = $"{settings.MicGain:0}%";
-        NsToggle.IsOn = settings.NoiseSuppression;
+        NsLevelSlider.Value = settings.NoiseSuppressionLevel;
+        UpdateNsLevelText(settings.NoiseSuppressionLevel);
         AgcToggle.IsOn = settings.AgcEnabled;
-        DfAttSlider.Value = settings.DfAttLim;
-        DfAttText.Text = $"{settings.DfAttLim:0} dB";
         EqLowSlider.Value = settings.EqLow;
         EqMidSlider.Value = settings.EqMid;
         EqHighSlider.Value = settings.EqHigh;
@@ -52,7 +51,11 @@ public sealed partial class SettingsWindow : Window
             _webrtc.Volume = (int)e.NewValue;
         };
 
-        DfAttSlider.ValueChanged += (_, e) => DfAttText.Text = $"{e.NewValue:0} dB";
+        NsLevelSlider.ValueChanged += (_, e) =>
+        {
+            UpdateNsLevelText((int)e.NewValue);
+            _voice?.SetNoiseSuppressionLevel((int)e.NewValue);
+        };
         EqLowSlider.ValueChanged += (_, e) => { EqLowText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
         EqMidSlider.ValueChanged += (_, e) => { EqMidText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
         EqHighSlider.ValueChanged += (_, e) => { EqHighText.Text = $"{e.NewValue:0} dB"; _webrtc?.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value); };
@@ -90,7 +93,8 @@ public sealed partial class SettingsWindow : Window
         var bitrate = _webrtc?.BitrateKbps ?? 0;
         OpusStatus.Text = bitrate > 0 ? $"{bitrate} kbps" : "48 kHz моно";
 
-        var nsOn = NsToggle.IsOn;
+        var nsLevel = (int)NsLevelSlider.Value;
+        var nsOn = nsLevel > 0;
         RnnoiseDot.Fill = nsOn ? Green() : Red();
         RnnoiseStatus.Text = nsOn ? "активно" : "выключено";
         RnnoiseStatus.Foreground = nsOn ? Green() : Red();
@@ -310,26 +314,33 @@ public sealed partial class SettingsWindow : Window
     private void SaveBtn_Click(object sender, RoutedEventArgs e)
     {
         StopTest();
+        int nsLevel = (int)NsLevelSlider.Value;
         _settings.MicDevice = MicCombo.SelectedIndex;
         _settings.MicGain = GainSlider.Value;
-        _settings.NoiseSuppression = NsToggle.IsOn;
+        _settings.NoiseSuppressionLevel = nsLevel;
+        _settings.NoiseSuppression = nsLevel > 0;
         _settings.AgcEnabled = AgcToggle.IsOn;
-        _settings.DfAttLim = DfAttSlider.Value;
         _settings.EqLow = EqLowSlider.Value;
         _settings.EqMid = EqMidSlider.Value;
         _settings.EqHigh = EqHighSlider.Value;
         _voice.MicGain = GainSlider.Value / 100.0;
         _voice.InputDevice = MicCombo.SelectedIndex;
-        _voice.NoiseSuppression = NsToggle.IsOn;
+        _voice.NoiseSuppression = nsLevel > 0;
+        _voice.SetNoiseSuppressionLevel(nsLevel);
         if (_webrtc is not null)
         {
-            _webrtc.NoiseSuppression = NsToggle.IsOn;
+            _webrtc.NoiseSuppression = nsLevel > 0;
             _webrtc.AgcEnabled = AgcToggle.IsOn;
             _webrtc.ApplyEq(EqLowSlider.Value, EqMidSlider.Value, EqHighSlider.Value);
         }
         _settings.Save();
         UpdateVoiceStatus();
         Close();
+    }
+
+    private void UpdateNsLevelText(int level)
+    {
+        NsLevelText.Text = level switch { 0 => "выкл", 1 => "мягкое", 2 => "среднее", 3 => "сильное", _ => "?" };
     }
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e)

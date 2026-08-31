@@ -12,8 +12,9 @@ public sealed class AppSettings
     public double MicGain { get; set; } = 100.0;
     public bool OpenMic { get; set; }
     public bool NoiseSuppression { get; set; } = true;
+    public int NoiseSuppressionLevel { get; set; } = 2;
     public bool AgcEnabled { get; set; } = true;
-    public double DfAttLim { get; set; } = 60.0;
+    public double DfAttLim { get; set; } = 30.0;
     public double EqLow { get; set; }
     public double EqMid { get; set; }
     public double EqHigh { get; set; }

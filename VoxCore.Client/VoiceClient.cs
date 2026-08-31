@@ -71,6 +71,11 @@ public sealed class VoiceClient : IDisposable
         set => _noiseSuppression = value;
     }
 
+    public void SetNoiseSuppressionLevel(int level)
+    {
+        _noiseSuppression = level > 0;
+    }
+
     public bool IsConnected => _running;
 
     public void Connect(string server, int port, string room, string name, string password)
