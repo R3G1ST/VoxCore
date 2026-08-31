@@ -12,9 +12,10 @@ namespace VoxCore.Bot;
 /// <summary>
 /// Voice bot for VoxCore testing.
 /// Modes:
-///   echo  — repeats received audio back
-///   tone  — sends 1kHz test tone
-///   listen — just receives and plays audio
+///   echo     — repeats received audio back
+///   tone     — sends 1kHz test tone
+///   listen   — just receives and plays audio
+///   diagnose — analyzes audio quality from all participants
 /// </summary>
 class Program
 {
@@ -46,9 +47,10 @@ class Program
                     Console.WriteLine("Usage: bot.exe [--channel name] [--mode echo|tone|listen] [--server ip] [--port port] [--name nickname]");
                     Console.WriteLine();
                     Console.WriteLine("Modes:");
-                    Console.WriteLine("  echo   — repeats your voice back (test roundtrip)");
-                    Console.WriteLine("  tone   — sends 1kHz test tone (test audio path)");
-                    Console.WriteLine("  listen — just listens, plays received audio");
+                    Console.WriteLine("  echo     — repeats your voice back (test roundtrip)");
+                    Console.WriteLine("  tone     — sends 1kHz test tone (test audio path)");
+                    Console.WriteLine("  listen   — just listens, plays received audio");
+                    Console.WriteLine("  diagnose — analyzes audio quality from all participants");
                     return 0;
             }
         }
@@ -148,6 +150,10 @@ class Program
         {
             Console.WriteLine("Echo mode: speaking into mic will repeat back. (Ctrl+C to stop)");
         }
+        else if (mode == "diagnose")
+        {
+            Console.WriteLine("Diagnose mode: analyzing audio quality from participants. (Ctrl+C to stop)");
+        }
         else
         {
             Console.WriteLine("Listen mode: receiving audio only. (Ctrl+C to stop)");
@@ -159,6 +165,11 @@ class Program
         var outBytes = new byte[FrameBytes];
         var opusBuf = new byte[4000];
         long recvCount = 0;
+
+        // Diagnose mode: per-speaker stats
+        var speakerStats = new Dictionary<string, SpeakerStats>();
+        var analyzeSw = System.Diagnostics.Stopwatch.StartNew();
+        long nextAnalyze = 5000;
 
         while (!ct.IsCancellationRequested)
         {
@@ -180,6 +191,14 @@ class Program
 
                         int n = decoder.Decode(raw.AsSpan(), pcmBuf.AsSpan(), FrameSize, false);
                         recvCount++;
+
+                        // Diagnose: analyze every speaker
+                        if (mode == "diagnose" && n > 0)
+                        {
+                            if (!speakerStats.ContainsKey(speaker))
+                                speakerStats[speaker] = new SpeakerStats();
+                            AnalyzeFrame(speakerStats[speaker], pcmBuf, n);
+                        }
 
                         if (mode == "listen" && n > 0)
                         {
@@ -211,6 +230,13 @@ class Program
 
                     case 0x07: // pong
                         break;
+                }
+
+                // Periodic analyze report
+                if (mode == "diagnose" && analyzeSw.ElapsedMilliseconds >= nextAnalyze)
+                {
+                    nextAnalyze += 5000;
+                    PrintAnalysis(speakerStats);
                 }
             }
             catch (OperationCanceledException) { break; }
@@ -323,5 +349,111 @@ class Program
             off += nl;
         }
         return names;
+    }
+
+    // ===== Diagnostic Analysis =====
+
+    class SpeakerStats
+    {
+        public long FrameCount;
+        public long ClipCount;
+        public double SumRms;
+        public double MaxPeak;
+        public double MinRms = double.MaxValue;
+        public double[] FreqEnergy = new double[8]; // 8 bands
+        public long ActiveFrames; // frames above noise floor
+    }
+
+    static void AnalyzeFrame(SpeakerStats stats, short[] pcm, int n)
+    {
+        stats.FrameCount++;
+
+        // RMS + Peak
+        double sumSq = 0;
+        double peak = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double s = pcm[i] / 32768.0;
+            sumSq += s * s;
+            double abs = Math.Abs(s);
+            if (abs > peak) peak = abs;
+            if (abs > 0.95) stats.ClipCount++;
+        }
+        double rms = Math.Sqrt(sumSq / n);
+        stats.SumRms += rms;
+        if (rms > stats.MaxPeak) stats.MaxPeak = rms;
+        if (rms < stats.MinRms && rms > 0.001) stats.MinRms = rms;
+        if (rms > 0.02) stats.ActiveFrames++;
+
+        // Simple DFT: 8 frequency bands (0-3kHz, split into 375Hz bands)
+        for (int band = 0; band < 8; band++)
+        {
+            double freq = (band + 0.5) * 375.0;
+            double re = 0, im = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double angle = 2.0 * Math.PI * freq * i / SampleRate;
+                re += pcm[i] / 32768.0 * Math.Cos(angle);
+                im -= pcm[i] / 32768.0 * Math.Sin(angle);
+            }
+            stats.FreqEnergy[band] += Math.Sqrt(re * re + im * im) / n;
+        }
+    }
+
+    static void PrintAnalysis(Dictionary<string, SpeakerStats> stats)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"═══════ AUDIO ANALYSIS ({DateTime.Now:HH:mm:ss}) ═══════");
+
+        if (stats.Count == 0)
+        {
+            Console.WriteLine("  No speakers detected.");
+            return;
+        }
+
+        foreach (var kv in stats)
+        {
+            string nick = kv.Key;
+            var s = kv.Value;
+            if (s.FrameCount == 0) continue;
+
+            double avgRms = s.SumRms / s.FrameCount;
+            double avgDbFs = 20 * Math.Log10(Math.Max(avgRms, 1e-10));
+            double peakDbFs = 20 * Math.Log10(Math.Max(s.MaxPeak, 1e-10));
+            double minDbFs = s.MinRms < double.MaxValue ? 20 * Math.Log10(Math.Max(s.MinRms, 1e-10)) : -999;
+            double activityPct = s.ActiveFrames * 100.0 / s.FrameCount;
+            double clipPct = s.ClipCount * 100.0 / s.FrameCount;
+
+            // Noise floor estimate (from quietest 10% of active frames)
+            string noiseFloor = minDbFs > -20 ? "⚠️ LOUD" : minDbFs > -40 ? "moderate" : "✅ quiet";
+
+            // Clipping
+            string clipStatus = clipPct > 5 ? $"🔴 CLIPPING ({clipPct:F1}%)" : clipPct > 0 ? $"⚠️ slight clip ({clipPct:F1}%)" : "✅ no clip";
+
+            // Spectral tilt: low vs high energy
+            double lowE = s.FreqEnergy[0] + s.FreqEnergy[1]; // 0-750Hz
+            double midE = s.FreqEnergy[2] + s.FreqEnergy[3] + s.FreqEnergy[4]; // 750-1875Hz
+            double highE = s.FreqEnergy[5] + s.FreqEnergy[6] + s.FreqEnergy[7]; // 1875-3000Hz
+            string spectral;
+            if (lowE > midE * 2 && lowE > highE * 3)
+                spectral = "🔽 LOW (вентилятор/гул)";
+            else if (highE > lowE * 2 && highE > midE * 2)
+                spectral = "🔼 HIGH (шипение/фиск)";
+            else
+                spectral = "📊 balanced";
+
+            // Echo hint: if noise floor is high but activity is low → possible echo
+            string echoHint = "";
+            if (minDbFs > -30 && activityPct < 50)
+                echoHint = " ← 🔄 possible echo/feedback";
+
+            Console.WriteLine($"  🎤 {nick}:");
+            Console.WriteLine($"     Peak: {peakDbFs:F1} dBFS | Avg: {avgDbFs:F1} dBFS | Noise floor: {minDbFs:F1} dBFS ({noiseFloor})");
+            Console.WriteLine($"     Activity: {activityPct:F0}% | Clip: {clipStatus}");
+            Console.WriteLine($"     Spectrum: {spectral}{echoHint}");
+        }
+
+        Console.WriteLine("═══════════════════════════════════════════════");
+        Console.WriteLine();
     }
 }

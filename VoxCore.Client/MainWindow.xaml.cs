@@ -365,9 +365,9 @@ public sealed partial class MainWindow : Window
 
     private void LeaveChannel()
     {
-        _voice.Disconnect();
-        _activeScreenShare?.StopCapture();
-        _activeScreenShare?.Dispose();
+        try { _voice.Disconnect(); } catch { }
+        try { _activeScreenShare?.StopCapture(); } catch { }
+        try { _activeScreenShare?.Dispose(); } catch { }
         _activeScreenShare = null;
         _currentChannel = null;
         ChannelNameText.Text = "не в канале";

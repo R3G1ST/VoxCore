@@ -169,16 +169,16 @@ public sealed class VoiceClient : IDisposable
     public void Disconnect()
     {
         if (!_running) return;
-        SendLeave();
+        try { SendLeave(); } catch { }
         _running = false;
-        _cts.Cancel();
-        _capture?.StopRecording();
-        _capture?.Dispose();
-        _playback?.Stop();
-        _playback?.Dispose();
-        _dsp?.Dispose();
-        _udp?.Close();
-        StatusChanged?.Invoke("отключено");
+        try { _cts.Cancel(); } catch { }
+        try { _capture?.StopRecording(); } catch { }
+        try { _capture?.Dispose(); } catch { }
+        try { _playback?.Stop(); } catch { }
+        try { _playback?.Dispose(); } catch { }
+        try { _dsp?.Dispose(); } catch { }
+        try { _udp?.Close(); } catch { }
+        try { StatusChanged?.Invoke("отключено"); } catch { }
     }
 
     private void OnCaptureData(object? sender, WaveInEventArgs e)
